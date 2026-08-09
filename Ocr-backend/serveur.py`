@@ -1,0 +1,280 @@
+# ============================================================================
+# AccountOCR — Professional Backend Server (Gemini Powered)
+# CNI Extraction: Gemini 1.5 Flash (Multimodal)
+# Plan Extraction: Gemini 1.5 Flash (Multimodal)
+# ============================================================================
+
+import os
+import re
+import json
+import time
+import logging
+import tempfile
+import traceback
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass, field
+
+import google.generativeai as genai
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from PIL import Image
+from dotenv import load_dotenv
+
+# ----------------------------------------------------------------------------
+# Configuration & Logging
+# ----------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("AccountOCR")
+
+load_dotenv()
+
+@dataclass
+class ServerConfig:
+    GEMINI_MODEL: str = "models/gemini-1.5-flash"
+    MAX_IMAGE_SIZE: int = 1600  # Max dimension to avoid huge token usage
+    GEMINI_RETRY_ATTEMPTS: int = 3
+    GEMINI_RETRY_DELAY: int = 5  # Seconds to wait between quota retries
+
+CONFIG = ServerConfig()
+
+# ----------------------------------------------------------------------------
+# LLM Client: Centralized Gemini Service
+# ----------------------------------------------------------------------------
+class LLMClient:
+    """Handles interactions with Google Gemini 1.5 Flash."""
+
+    def __init__(self, config: ServerConfig):
+        self.config = config
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            logger.error("❌ GEMINI_API_KEY not found in .env")
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel(self.config.GEMINI_MODEL)
+
+    def _clean_json(self, text: str) -> str:
+        """Removes markdown blocks and whitespace."""
+        text = text.strip()
+        text = re.sub(r"^```(json)?", "", text).strip()
+        text = re.sub(r"```$", "", text).strip()
+        return text
+
+    def _resize_image(self, image_path: str) -> Image.Image:
+        """Resizes image to prevent quota issues and speed up processing."""
+        img = Image.open(image_path)
+        if max(img.size) > self.config.MAX_IMAGE_SIZE:
+            img.thumbnail((self.config.MAX_IMAGE_SIZE, self.config.MAX_IMAGE_SIZE), Image.LANCZOS)
+        return img
+
+    def call_gemini_multimodal(self, prompt: str, image_paths: List[str]) -> Dict[str, Any]:
+        """
+        Sends one or more images and a prompt to Gemini.
+        Includes robust retry logic for 429 (Quota) errors.
+        """
+        # Prepare the multimodal content (Prompt + Images)
+        content = [prompt]
+        for path in image_paths:
+            content.append(self._resize_image(path))
+
+        for attempt in range(1, self.config.GEMINI_RETRY_ATTEMPTS + 1):
+            try:
+                logger.info(f"Gemini request attempt {attempt}...")
+                response = self.model.generate_content(
+                    content,
+                    request_options={"timeout": 120}
+                )
+                cleaned = self._clean_json(response.text)
+                return json.loads(cleaned)
+
+            except Exception as e:
+                error_msg = str(e).lower()
+                # Check if it's a quota/limit error (429)
+                if "429" in error_msg or "quota" in error_msg or "resource exhausted" in error_msg:
+                    logger.warning(f"⚠️ Gemini Quota exceeded. Retrying in {self.config.GEMINI_RETRY_DELAY}s... ({attempt}/{self.config.GEMINI_RETRY_ATTEMPTS})")
+                    if attempt < self.config.GEMINI_RETRY_ATTEMPTS:
+                        time.sleep(self.config.GEMINI_RETRY_DELAY * attempt)
+                        continue
+
+                logger.error(f"Gemini critical error: {e}")
+                raise e
+
+# ----------------------------------------------------------------------------
+# CNI Processor: Gemini-Based Extraction
+# ----------------------------------------------------------------------------
+class CniProcessor:
+    """Handles extraction of CNI data using Gemini's multimodal capabilities."""
+
+    def __init__(self, llm_client: LLMClient):
+        self.llm_client = llm_client
+
+    def extract_cni_data(self, image_paths: List[str]) -> Dict[str, Any]:
+        """Sends all CNI images to Gemini for fusion and structuring."""
+        prompt = """Tu es un expert en analyse de documents administratifs, spécialisé dans les Cartes Nationales d'Identité (CNI) du Cameroun.
+Analyse l'image (ou les images) fournie(s) pour extraire les informations suivantes.
+Les images peuvent contenir le recto, le verso, ou les deux faces combinées.
+
+CONSIGNES :
+1. Fusionne intelligemment toutes les informations présentes sur les différentes images.
+2. Si un champ est manquant ou illisible, mets la valeur null.
+3. Ne jamais inventer de données.
+4. RÉPOND UNIQUEMENT avec un objet JSON valide, sans texte autour.
+
+FORMAT JSON ATTENDU :
+{
+  "nom": null,
+  "prenoms": null,
+  "date_naissance": null,
+  "lieu_naissance": null,
+  "date_expiration": null,
+  "nom_pere": null,
+  "nom_mere": null,
+  "profession": null,
+  "numero_cni": null,
+  "date_delivrance": null
+}"""
+        return self.llm_client.call_gemini_multimodal(prompt, image_paths)
+
+# ----------------------------------------------------------------------------
+# Plan Processor: Gemini-Based Extraction
+# ----------------------------------------------------------------------------
+class PlanProcessor:
+    """Handles extraction of location plans using Gemini."""
+
+    def __init__(self, llm_client: LLMClient):
+        self.llm_client = llm_client
+
+    def extract_plan_data(self, image_path: str) -> Dict[str, Any]:
+        """Sends the location plan image to Gemini."""
+        prompt = """Tu es un expert en extraction de données manuscrites pour des documents bancaires.
+Analyse l'image de ce plan de localisation et extrais les informations suivantes sous forme de JSON strict.
+Si une information est manquente ou illisible, mets une chaîne vide "".
+Ne rajoute aucun texte avant ou après le JSON, pas de balises markdown.
+
+FORMAT JSON ATTENDU :
+{
+  "ville": "",
+  "quartier": "",
+  "tel1": "",
+  "tel2": "",
+  "email": "",
+  "datePlan": "",
+  "contact1Nom": "",
+  "contact1Tel1": "",
+  "contact1Tel2": "",
+  "contact2Nom": "",
+  "contact2Tel1": "",
+  "contact2Tel2": ""
+}"""
+        # Send as a list to maintain multimodal interface
+        return self.llm_client.call_gemini_multimodal(prompt, [image_path])
+
+# ----------------------------------------------------------------------------
+# OCR Server: Flask API
+# ----------------------------------------------------------------------------
+app = Flask(__name__)
+CORS(app)
+
+# Initialize components
+config = ServerConfig()
+llm_client = LLMClient(config)
+cni_processor = CniProcessor(llm_client)
+plan_processor = PlanProcessor(llm_client)
+
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify({
+        "status": "online",
+        "message": "AccountOCR Professional API (Gemini Powered)",
+        "version": "6.0"
+    })
+
+@app.route("/extraire-tout", methods=["POST"])
+def extraire_tout():
+    """
+    Main endpoint: Extracts data from CNI and Plan using Gemini.
+    Expects multiple files for 'cni' and one file for 'plan'.
+    """
+    if "cni" not in request.files or "plan" not in request.files:
+        return jsonify({"erreur": "Les fichiers 'cni' et 'plan' sont requis"}), 400
+
+    fichiers_cni = request.files.getlist("cni")
+    fichier_plan = request.files["plan"]
+
+    temp_paths = []
+    try:
+        # 1. Save CNI images
+        cni_paths = []
+        for f in fichiers_cni:
+            suffix = os.path.splitext(f.filename)[1] or ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                f.save(tmp.name)
+                cni_paths.append(tmp.name)
+                temp_paths.append(tmp.name)
+
+        # 2. Save Plan image
+        suffix_plan = os.path.splitext(fichier_plan.filename)[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix_plan) as tmp_plan:
+            fichier_plan.save(tmp_plan.name)
+            plan_path = tmp_plan.name
+            temp_paths.append(plan_path)
+
+        # --- Processing Pipeline (All powered by Gemini 1.5 Flash) ---
+
+        # A. CNI Extraction
+        logger.info(f"Processing {len(cni_paths)} CNI images via Gemini...")
+        cni_data = cni_processor.extract_cni_data(cni_paths)
+
+        # B. Plan Extraction
+        logger.info("Processing Location Plan via Gemini...")
+        plan_data = plan_processor.extract_plan_data(plan_path)
+
+        # Combine results
+        final_data = {**cni_data, **plan_data}
+
+        return jsonify({
+            "succes": True,
+            "champs": final_data
+        })
+
+    except Exception as e:
+        logger.error(f"Pipeline error: {e}")
+        traceback.print_exc()
+        return jsonify({"erreur": str(e)}), 500
+
+    finally:
+        # Guaranteed cleanup
+        for path in temp_paths:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+@app.route("/debug", methods=["POST"])
+def debug_ocr():
+    """Direct multimodal test for a single image."""
+    if "fichier" not in request.files:
+        return jsonify({"erreur": "Aucun fichier fourni"}), 400
+
+    f = request.files["fichier"]
+    suffix = os.path.splitext(f.filename)[1] or ".jpg"
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        f.save(tmp.name)
+        path = tmp.name
+
+    try:
+        # Just a basic test call to Gemini
+        res = llm_client.call_gemini_multimodal("Décris cette image brièvement", [path])
+        return jsonify({"resultat": res})
+    except Exception as e:
+        return jsonify({"erreur": str(e)}), 500
+    finally:
+        try: os.remove(path)
+        except: pass
+
+if __name__ == "__main__":
+    logger.info("🚀 AccountOCR Professional API starting...")
+    logger.info("📡 Server available at http://localhost:5000")
+    app.run(host="0.0.0.0", port=5000, debug=True)

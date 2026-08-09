@@ -1,0 +1,8 @@
+google-generativeai
+num2words
+Flask
+flask-cors
+groq
+python-dotenv
+gunicorn
+
