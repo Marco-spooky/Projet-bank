@@ -390,7 +390,7 @@ const LS_COMPTES_JOUR = "accountocr_comptes_jour";
 const LS_DATE = "accountocr_date";
 const LS_TOKEN = "accountocr_token";
 const LS_NOM = "accountocr_nom";
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "https://projet-bank-production.up.railway.app";
 
 function sauvegarder(donnees, page) {
   try { localStorage.setItem(LS_DONNEES, JSON.stringify(donnees)); localStorage.setItem(LS_PAGE, page); } catch (e) { console.error("AccountOCR: échec sauvegarde localStorage", e); }
