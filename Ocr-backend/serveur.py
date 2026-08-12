@@ -717,6 +717,18 @@ def debug_ocr():
 
 if __name__ == "__main__":
     logger.info("AccountOCR Professional API starting...")
-    logger.info("Server available at http://localhost:5000")
+
+    # On récupère le port de Railway, sinon 5000
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+
+    # Sur Railway, on désactive le mode debug pour éviter les conflits de proxy
+    is_production = os.environ.get("RAILWAY_ENVIRONMENT") is not None
+    debug_mode = False if is_production else True
+
+    logger.info("Server starting on host 0.0.0.0, port %s (Debug: %s)", port, debug_mode)
+
+    try:
+        app.run(host="0.0.0.0", port=port, debug=debug_mode)
+    except Exception as e:
+        logger.error("CRITICAL ERROR during server startup: %s", e)
+        traceback.print_exc()
