@@ -68,7 +68,7 @@ class LLMClient:
         images = [{"mime_type": mimetypes.guess_type(p)[0] or "image/jpeg",
                    "data": Path(p).read_bytes()} for p in image_paths]
         response = self.model.generate_content([prompt, *images],
-        request_options={"timeout": 60},
+        request_options={"timeout": 180},
         )
         
         raw_text = (response.text or "").strip()
