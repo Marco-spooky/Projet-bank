@@ -22,7 +22,37 @@ from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from groq import Groq, APIError, APIConnectionError, RateLimitError
 from werkzeug.security import generate_password_hash, check_password_hash
-from dotenv import load_dotenv
+from dotenv import load_dotenv()
+
+
+const express = require('express');
+const cors = require('cors'); // 1. Importe cors
+const app = express();
+
+// 2. Configure CORS *AVANT* tes routes et tes middlewares de routes
+app.use(cors({
+  origin: [
+    'https://projet-bank.vercel.app', // Ton domaine Vercel exact (sans slash '/' à la fin)
+    'http://localhost:3000',           // Pour garder le test en local si ton frontend tourne sur le port 3000
+    'http://localhost:5173'            // (Optionnel) Si tu utilises Vite en local
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+app.use(express.json());
+
+// Tes routes (ex: /api/login) vont ici
+app.post('/api/login', (req, res) => {
+  // ... ton code de connexion
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Serveur démarré sur le port ${PORT}`);
+});
+
 
 load_dotenv()
 
