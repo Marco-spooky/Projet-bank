@@ -20,17 +20,6 @@ import google.generativeai as genai
 import num2words
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
-app= Flask(__name__)
-CORS(app, 
-origins=[
-    "https://projet-bank.vercel.app"
-    "http://localhost:3000",
-    "http://localhost:5173"
-    ], 
-    supports_credentials=True,
-    allow_headers=["Content-Type", "Autorization"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    )
 from groq import Groq, APIError, APIConnectionError, RateLimitError
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
