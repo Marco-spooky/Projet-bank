@@ -1838,179 +1838,179 @@ function PageAdminLogs({ onRetour, dark, setDark, langue, setLangue, t, serveurO
 // APP
 // ============================================================
 
-  const [dark, setDark] = useState(false);
-  const [langue, setLangue] = useState("fr");
-  const [comptesJour, setComptesJour] = useState(getComptesJour());
-  const [serveurOK, setServeurOK] = useState(false);
-  const [page, setPage] = useState("dashboard");
-  const [donnees, setDonnees] = useState({});
-  const t = T[langue];
+const [dark, setDark] = useState(false);
+const [langue, setLangue] = useState("fr");
+const [comptesJour, setComptesJour] = useState(getComptesJour());
+const [serveurOK, setServeurOK] = useState(false);
+const [page, setPage] = useState("dashboard");
+const [donnees, setDonnees] = useState({});
+const t = T[langue];
 
-  // ---- Authentification ----
-  const [token, setToken] = useState(() => localStorage.getItem(LS_TOKEN) || null);
-  const [csoNom, setCsoNom] = useState(() => localStorage.getItem(LS_NOM) || "");
-  const [role, setRole] = useState(() => localStorage.getItem(LS_ROLE) || "CSO");
-  const [authChecking, setAuthChecking] = useState(true);
+// ---- Authentification ----
+const [token, setToken] = useState(() => localStorage.getItem(LS_TOKEN) || null);
+const [csoNom, setCsoNom] = useState(() => localStorage.getItem(LS_NOM) || "");
+const [role, setRole] = useState(() => localStorage.getItem(LS_ROLE) || "CSO");
+const [authChecking, setAuthChecking] = useState(true);
 
-  useEffect(() => {
-    console.log(
-      "AccountOCR: démarrage — origine =", window.location.origin,
-      "| comptesJour localStorage =", localStorage.getItem(LS_COMPTES_JOUR),
-      "| date enregistrée =", localStorage.getItem(LS_DATE),
-      "| aujourd'hui =", new Date().toDateString()
-    );
-  }, []);
-
-  useEffect(() => {
-    const verifierSession = async () => {
-      const savedToken = localStorage.getItem(LS_TOKEN);
-      if (!savedToken) { setAuthChecking(false); return; }
-      try {
-        const res = await fetch(`${API_URL}/verifier-session`, {
-          headers: { "Authorization": `Bearer ${savedToken}` },
-          signal: AbortSignal.timeout(4000),
-        });
-        const data = await res.json();
-        if (res.ok && data.succes) {
-          setToken(savedToken);
-          setCsoNom(data.nom);
-          setRole(data.role);
-          localStorage.setItem(LS_NOM, data.nom);
-          localStorage.setItem(LS_ROLE, data.role);
-        } else {
-          localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_NOM); localStorage.removeItem(LS_ROLE);
-          setToken(null); setCsoNom(""); setRole("CSO");
-        }
-      } catch (e) {
-        // Serveur injoignable au démarrage : on garde la session locale,
-        // elle sera revérifiée dès qu'une action nécessitera le serveur.
-      } finally {
-        setAuthChecking(false);
-      }
-    };
-    verifierSession();
-  }, []);
-
-  const seConnecter = (newToken, nom, userRole) => {
-    localStorage.setItem(LS_TOKEN, newToken);
-    localStorage.setItem(LS_NOM, nom);
-    localStorage.setItem(LS_ROLE, userRole);
-    setToken(newToken);
-    setCsoNom(nom);
-    setRole(userRole);
-  };
-
-
-  const deconnexion = () => {
-    const savedToken = localStorage.getItem(LS_TOKEN);
-    if (savedToken) {
-      fetch(`${API_URL}/deconnexion`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${savedToken}` },
-      }).catch(() => { });
-    }
-    localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_NOM); localStorage.removeItem(LS_ROLE);
-    localStorage.removeItem(LS_DONNEES); localStorage.removeItem(LS_PAGE);
-    setToken(null); setCsoNom(""); setRole("CSO"); setDonnees({}); setPage("dashboard");
-  };
-
-  useEffect(() => {
-    const verifier = async () => {
-      try {
-        const res = await fetch(`${API_URL}/`, { signal: AbortSignal.timeout(2000) });
-        setServeurOK(res.ok);
-      } catch (e) { setServeurOK(false); }
-    };
-    verifier();
-    const interval = setInterval(verifier, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const s = charger();
-    if (s.page && s.page !== "dashboard" && Object.keys(s.donnees).length > 0) {
-      setDonnees(s.donnees); setPage(s.page);
-    }
-  }, []);
-
-  const allerVers = (p, d = donnees) => { setPage(p); setDonnees(d); sauvegarder(d, p); };
-  const terminer = () => {
-    localStorage.removeItem(LS_DONNEES); localStorage.removeItem(LS_PAGE);
-    localStorage.removeItem("accountocr_img_cni"); localStorage.removeItem("accountocr_img_plan");
-    setComptesJour(incrementerComptesJour()); setDonnees({}); setPage("dashboard");
-  };
-
-  const props = { dark, setDark, langue, setLangue, t, serveurOK, langueActuelle: langue };
-
-  // ---- Écran de vérification de session ----
-  if (authChecking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
-        <div className="flex flex-col items-center gap-3">
-          <LogoAccountOCR />
-          <p className={`text-xs font-semibold ${dark ? "text-gray-400" : "text-gray-500"}`}>{t.verificationSession}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ---- Pas connecté : page de login ----
-  if (!token) {
-    return <PageLogin {...props} onConnecte={seConnecter} />;
-  }
-
-  return (
-    <AuthContext.Provider value={{ csoNom, role, token, deconnexion }}>
-      {(() => {
-        if (page === "dashboard")
-          return <PageDashboard {...props} role={role} comptesJour={comptesJour} onNouveauDossier={() => allerVers("categorie", {})} onVoirArchives={() => allerVers("archives")} onVoirAdmin={() => allerVers("admin-logs")} />;
-
-        if (page === "categorie")
-          return <PageCategorie {...props} onRetour={() => allerVers("dashboard")} onSelect={(cat) => allerVers("type", { ...donnees, compteCategorie: cat })} />;
-
-        if (page === "type")
-          return <PageTypeCompte {...props} categorie={donnees.compteCategorie}
-            onRetour={() => allerVers("categorie")}
-            onSelectType={(typeObj) => {
-              if (typeObj.hasSubtypes) {
-                allerVers("soustype", { ...donnees, compteType: typeObj.key, compteTypeLabel: typeObj.label[langue] });
-              } else {
-                allerVers("extraction", {
-                  ...donnees,
-                  compteType: typeObj.key, compteTypeLabel: typeObj.label[langue],
-                  compteSousType: null, compteSousTypeLabel: null,
-                  servicesObligatoires: typeObj.obligatoires,
-                  servicesFacultatifsDisponibles: typeObj.facultatifs,
-                  servicesFacultatifsChoisis: [],
-                });
-              }
-            }} />;
-
-        if (page === "soustype")
-          return <PageSousType {...props} categorie={donnees.compteCategorie} typeKey={donnees.compteType}
-            onRetour={() => allerVers("type")}
-            onSelectSubtype={(sub) => allerVers("extraction", {
-              ...donnees,
-              compteSousType: sub.key, compteSousTypeLabel: sub.label[langue],
-              servicesObligatoires: sub.obligatoires,
-              servicesFacultatifsDisponibles: sub.facultatifs,
-              servicesFacultatifsChoisis: [],
-            })} />;
-
-        if (page === "extraction")
-          return <PageExtraction {...props} donneesInitiales={donnees}
-            onRetour={() => allerVers(donnees.compteSousType ? "soustype" : "type")}
-            onContinuer={d => allerVers("services", d)} />;
-        if (page === "services")
-          return <PageServices {...props} donnees={donnees} onRetour={() => allerVers("extraction")} onContinuer={d => allerVers("recap", d)} />;
-        if (page === "archives")
-          return <PageArchives {...props} onRetour={() => allerVers("dashboard")} />;
-        if (page === "recap")
-          return <PageRecapitulatif {...props} donnees={donnees} onRetour={() => allerVers("services")} onTerminer={terminer} />;
-        if (page === "admin-logs")
-          return <PageAdminLogs {...props} onRetour={() => allerVers("dashboard")} />;
-
-        return null;
-      })()}
-    </AuthContext.Provider>
+useEffect(() => {
+  console.log(
+    "AccountOCR: démarrage — origine =", window.location.origin,
+    "| comptesJour localStorage =", localStorage.getItem(LS_COMPTES_JOUR),
+    "| date enregistrée =", localStorage.getItem(LS_DATE),
+    "| aujourd'hui =", new Date().toDateString()
   );
+}, []);
+
+useEffect(() => {
+  const verifierSession = async () => {
+    const savedToken = localStorage.getItem(LS_TOKEN);
+    if (!savedToken) { setAuthChecking(false); return; }
+    try {
+      const res = await fetch(`${API_URL}/verifier-session`, {
+        headers: { "Authorization": `Bearer ${savedToken}` },
+        signal: AbortSignal.timeout(4000),
+      });
+      const data = await res.json();
+      if (res.ok && data.succes) {
+        setToken(savedToken);
+        setCsoNom(data.nom);
+        setRole(data.role);
+        localStorage.setItem(LS_NOM, data.nom);
+        localStorage.setItem(LS_ROLE, data.role);
+      } else {
+        localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_NOM); localStorage.removeItem(LS_ROLE);
+        setToken(null); setCsoNom(""); setRole("CSO");
+      }
+    } catch (e) {
+      // Serveur injoignable au démarrage : on garde la session locale,
+      // elle sera revérifiée dès qu'une action nécessitera le serveur.
+    } finally {
+      setAuthChecking(false);
+    }
+  };
+  verifierSession();
+}, []);
+
+const seConnecter = (newToken, nom, userRole) => {
+  localStorage.setItem(LS_TOKEN, newToken);
+  localStorage.setItem(LS_NOM, nom);
+  localStorage.setItem(LS_ROLE, userRole);
+  setToken(newToken);
+  setCsoNom(nom);
+  setRole(userRole);
+};
+
+
+const deconnexion = () => {
+  const savedToken = localStorage.getItem(LS_TOKEN);
+  if (savedToken) {
+    fetch(`${API_URL}/deconnexion`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${savedToken}` },
+    }).catch(() => { });
+  }
+  localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_NOM); localStorage.removeItem(LS_ROLE);
+  localStorage.removeItem(LS_DONNEES); localStorage.removeItem(LS_PAGE);
+  setToken(null); setCsoNom(""); setRole("CSO"); setDonnees({}); setPage("dashboard");
+};
+
+useEffect(() => {
+  const verifier = async () => {
+    try {
+      const res = await fetch(`${API_URL}/`, { signal: AbortSignal.timeout(2000) });
+      setServeurOK(res.ok);
+    } catch (e) { setServeurOK(false); }
+  };
+  verifier();
+  const interval = setInterval(verifier, 5000);
+  return () => clearInterval(interval);
+}, []);
+
+useEffect(() => {
+  const s = charger();
+  if (s.page && s.page !== "dashboard" && Object.keys(s.donnees).length > 0) {
+    setDonnees(s.donnees); setPage(s.page);
+  }
+}, []);
+
+const allerVers = (p, d = donnees) => { setPage(p); setDonnees(d); sauvegarder(d, p); };
+const terminer = () => {
+  localStorage.removeItem(LS_DONNEES); localStorage.removeItem(LS_PAGE);
+  localStorage.removeItem("accountocr_img_cni"); localStorage.removeItem("accountocr_img_plan");
+  setComptesJour(incrementerComptesJour()); setDonnees({}); setPage("dashboard");
+};
+
+const props = { dark, setDark, langue, setLangue, t, serveurOK, langueActuelle: langue };
+
+// ---- Écran de vérification de session ----
+if (authChecking) {
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
+      <div className="flex flex-col items-center gap-3">
+        <LogoAccountOCR />
+        <p className={`text-xs font-semibold ${dark ? "text-gray-400" : "text-gray-500"}`}>{t.verificationSession}</p>
+      </div>
+    </div>
+  );
+}
+
+// ---- Pas connecté : page de login ----
+if (!token) {
+  return <PageLogin {...props} onConnecte={seConnecter} />;
+}
+
+return (
+  <AuthContext.Provider value={{ csoNom, role, token, deconnexion }}>
+    {(() => {
+      if (page === "dashboard")
+        return <PageDashboard {...props} role={role} comptesJour={comptesJour} onNouveauDossier={() => allerVers("categorie", {})} onVoirArchives={() => allerVers("archives")} onVoirAdmin={() => allerVers("admin-logs")} />;
+
+      if (page === "categorie")
+        return <PageCategorie {...props} onRetour={() => allerVers("dashboard")} onSelect={(cat) => allerVers("type", { ...donnees, compteCategorie: cat })} />;
+
+      if (page === "type")
+        return <PageTypeCompte {...props} categorie={donnees.compteCategorie}
+          onRetour={() => allerVers("categorie")}
+          onSelectType={(typeObj) => {
+            if (typeObj.hasSubtypes) {
+              allerVers("soustype", { ...donnees, compteType: typeObj.key, compteTypeLabel: typeObj.label[langue] });
+            } else {
+              allerVers("extraction", {
+                ...donnees,
+                compteType: typeObj.key, compteTypeLabel: typeObj.label[langue],
+                compteSousType: null, compteSousTypeLabel: null,
+                servicesObligatoires: typeObj.obligatoires,
+                servicesFacultatifsDisponibles: typeObj.facultatifs,
+                servicesFacultatifsChoisis: [],
+              });
+            }
+          }} />;
+
+      if (page === "soustype")
+        return <PageSousType {...props} categorie={donnees.compteCategorie} typeKey={donnees.compteType}
+          onRetour={() => allerVers("type")}
+          onSelectSubtype={(sub) => allerVers("extraction", {
+            ...donnees,
+            compteSousType: sub.key, compteSousTypeLabel: sub.label[langue],
+            servicesObligatoires: sub.obligatoires,
+            servicesFacultatifsDisponibles: sub.facultatifs,
+            servicesFacultatifsChoisis: [],
+          })} />;
+
+      if (page === "extraction")
+        return <PageExtraction {...props} donneesInitiales={donnees}
+          onRetour={() => allerVers(donnees.compteSousType ? "soustype" : "type")}
+          onContinuer={d => allerVers("services", d)} />;
+      if (page === "services")
+        return <PageServices {...props} donnees={donnees} onRetour={() => allerVers("extraction")} onContinuer={d => allerVers("recap", d)} />;
+      if (page === "archives")
+        return <PageArchives {...props} onRetour={() => allerVers("dashboard")} />;
+      if (page === "recap")
+        return <PageRecapitulatif {...props} donnees={donnees} onRetour={() => allerVers("services")} onTerminer={terminer} />;
+      if (page === "admin-logs")
+        return <PageAdminLogs {...props} onRetour={() => allerVers("dashboard")} />;
+
+      return null;
+    })()}
+  </AuthContext.Provider>
+);
