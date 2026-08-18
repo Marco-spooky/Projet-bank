@@ -16,10 +16,16 @@ from pathlib import Path
 from functools import wraps
 
 import base64
+import zipfile
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 import google.generativeai as genai
 import num2words
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 from groq import Groq, APIError, APIConnectionError, RateLimitError
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -390,7 +396,7 @@ def get_db() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Crée les tables users / sessions si elles n'existent pas encore."""
+    """Crée les tables users / sessions et gère les migrations de colonnes."""
     conn = get_db()
     try:
         conn.executescript(
@@ -399,17 +405,50 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nom TEXT NOT NULL UNIQUE,
                 mot_de_passe_hash TEXT NOT NULL,
-                date_creation TEXT NOT NULL
+                date_creation TEXT NOT NULL,
+                role TEXT DEFAULT 'CSO'
             );
 
             CREATE TABLE IF NOT EXISTS sessions (
                 token TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 date_creation TEXT NOT NULL,
+                last_activity TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS archives (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reference TEXT NOT NULL,
+                zip_path TEXT NOT NULL,
+                date_archivage TEXT NOT NULL,
+                created_by TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS system_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                endpoint TEXT,
+                error_message TEXT,
+                traceback TEXT,
+                user_id INTEGER,
+                status_code INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             );
             """
         )
+
+        # Migration pour les anciennes versions de la DB
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'CSO'")
+        except sqlite3.OperationalError:
+            pass # Colonne déjà présente
+
+        try:
+            conn.execute("ALTER TABLE sessions ADD COLUMN last_activity TEXT")
+        except sqlite3.OperationalError:
+            pass # Colonne déjà présente
+
         conn.commit()
         logger.info("Base SQLite prête (%s)", DB_PATH)
     finally:
@@ -430,8 +469,8 @@ def creer_session(user_id: int) -> str:
     conn = get_db()
     try:
         conn.execute(
-            "INSERT INTO sessions (token, user_id, date_creation) VALUES (?, ?, ?)",
-            (token, user_id, _now_iso()),
+            "INSERT INTO sessions (token, user_id, date_creation, last_activity) VALUES (?, ?, ?, ?)",
+            (token, user_id, _now_iso(), _now_iso()),
         )
         conn.commit()
     finally:
@@ -439,20 +478,55 @@ def creer_session(user_id: int) -> str:
     return token
 
 
+def update_activity(token: str) -> None:
+    """Met à jour la date de dernière activité pour prolonger la session."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE sessions SET last_activity = ? WHERE token = ?",
+            (_now_iso(), token),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def utilisateur_depuis_token(token: str) -> Optional[sqlite3.Row]:
     if not token:
         return None
     conn = get_db()
     try:
+        # 1. Récupération de la session et de l'utilisateur
         row = conn.execute(
             """
-            SELECT users.id, users.nom
+            SELECT users.id, users.nom, users.role, sessions.last_activity
             FROM sessions
             JOIN users ON users.id = sessions.user_id
             WHERE sessions.token = ?
             """,
             (token,),
         ).fetchone()
+
+        if not row:
+            return None
+
+        # 2. Vérification du timeout (30 minutes)
+        try:
+            last_act = datetime.fromisoformat(row["last_activity"])
+            now = datetime.now(timezone.utc)
+            diff = (now - last_act).total_seconds()
+            if diff > 30 * 60:
+                logger.info("Session expirée pour l'utilisateur %s (inactivité > 30min)", row["nom"])
+                conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+                conn.commit()
+                return None
+        except (ValueError, TypeError) as exc:
+            logger.warning("Erreur format date activité : %s", exc)
+            return None
+
+        # 3. Mise à jour de l'activité
+        update_activity(token)
+
         return row
     finally:
         conn.close()
@@ -466,6 +540,22 @@ def _extraire_token() -> Optional[str]:
     return request.headers.get("X-Auth-Token")
 
 
+def require_admin(f):
+    """Décorateur : protège une route, exige un rôle ADMIN."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = _extraire_token()
+        user = utilisateur_depuis_token(token)
+        if not user:
+            return jsonify({"erreur": "Non authentifié. Merci de vous reconnecter."}), 401
+        if user.get("role") != "ADMIN":
+            return jsonify({"erreur": "Accès refusé. Privilèges administrateur requis."}), 403
+        g.user_id = user["id"]
+        g.user_nom = user["nom"]
+        g.user_role = user["role"]
+        return f(*args, **kwargs)
+    return wrapper
+
 def require_auth(f):
     """Décorateur : protège une route, exige un token de session valide."""
     @wraps(f)
@@ -476,15 +566,163 @@ def require_auth(f):
             return jsonify({"erreur": "Non authentifié. Merci de vous reconnecter."}), 401
         g.user_id = user["id"]
         g.user_nom = user["nom"]
+        g.user_role = user["role"]
         return f(*args, **kwargs)
     return wrapper
 
+
+def generate_client_pdf(data: dict, pdf_path: str):
+    """Génère une fiche client PDF professionnelle via reportlab."""
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4)
+    styles = getSampleStyleSheet()
+
+    # Styles personnalisés
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, textColor=colors.hexColor("#002147"), alignment=1, spaceAfter=12)
+    section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontSize=12, textColor=colors.white, backColor=colors.hexColor("#002147"), alignment=0, spaceBefore=12, spaceAfter=6, leftIndent=0, borderPadding=4)
+    label_style = ParagraphStyle('LabelStyle', parent=styles['Normal'], fontSize=9, textColor=colors.hexColor("#003366"), fontName='Helvetica-Bold')
+    value_style = ParagraphStyle('ValueStyle', parent=styles['Normal'], fontSize=10, textColor=colors.black)
+
+    elements = []
+
+    # Header
+    elements.append(Paragraph("FICHE D'OUVERTURE DE COMPTE", title_style))
+    elements.append(Paragraph(f"CCA BANK - Document Confidentiel - {datetime.now().strftime('%d/%m/%Y')}", ParagraphStyle('Sub', parent=styles['Normal'], fontSize=9, alignment=1, spaceAfter=20)))
+
+    def add_section(title, fields):
+        elements.append(Paragraph(title, section_style))
+        table_data = []
+        for i in range(0, len(fields), 2):
+            row = []
+            for j in range(2):
+                if i + j < len(fields):
+                    f_key, f_label = fields[i + j]
+                    val = data.get(f_key, "—")
+                    row.append([Paragraph(f"<b>{f_label}</b>", label_style), Paragraph(str(val), value_style)])
+                else:
+                    row.append(["", ""])
+            table_data.append(row)
+
+        # On aplatit la structure pour reportlab Table
+        flattened_table = []
+        for r in table_data:
+            row_cells = []
+            for cell in r:
+                if isinstance(cell, list):
+                    row_cells.extend(cell)
+                else:
+                    row_cells.append(cell)
+            flattened_table.append(row_cells)
+
+        t = Table(flattened_table, colWidths=[100, 150, 100, 150])
+        t.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 12))
+
+    # Sections
+    add_section("IDENTITÉ (CNI)", [
+        ("nom", "Nom"), ("prenom", "Prénoms"),
+        ("dateNaissance", "Date Naissance"), ("lieuNaissance", "Lieu Naissance"),
+        ("nomPere", "Nom Père"), ("nomMere", "Nom Mère"),
+        ("profession", "Profession"), ("dateExpiration", "Expiration CNI"),
+        ("dateDelivrance", "Délivrance"), ("numeroCNI", "N° CNI")
+    ])
+
+    add_section("LOCALISATION", [
+        ("ville", "Ville"), ("quartier", "Quartier"),
+        ("tel1", "Tél 1"), ("tel2", "Tél 2"),
+        ("email", "Email"), ("datePlan", "Date Plan")
+    ])
+
+    add_section("PERSONNES À CONTACTER", [
+        ("contact1Nom", "Contact 1 Nom"), ("contact1Tel1", "Contact 1 Tél 1"),
+        ("contact2Nom", "Contact 2 Nom"), ("contact2Tel1", "Contact 2 Tél 1"),
+    ])
+
+    add_section("INFORMATIONS COMPLÉMENTAIRES", [
+        ("nomEntreprise", "Entreprise"), ("nomEmployeur", "Employeur"),
+        ("dateEmbauche", "Date Embauche"), ("salaire", "Salaire"),
+        ("periodiciteRevenu", "Périodicité"), ("situationMatrimoniale", "Statut Matri."),
+        ("regimeMatrimonial", "Régime"), ("communauteBiens", "Communauté"),
+        ("situationImmobiliere", "Immobilier"), ("agenceBase", "Agence")
+    ])
+
+    # Compte et Services
+    elements.append(Paragraph("SOUSTRIPTIONS", section_style))
+    compte_info = f"Type : {data.get('compteTypeLabel', '—')} / {data.get('compteSousTypeLabel', '—')}"
+    elements.append(Paragraph(compte_info, value_style))
+    elements.append(Spacer(1, 6))
+
+    elements.append(Paragraph("Services Obligatoires :", label_style))
+    services_ob = ", ".join(data.get("servicesObligatoires", []))
+    elements.append(Paragraph(services_ob or "—", value_style))
+
+    elements.append(Paragraph("Services Facultatifs :", label_style))
+    services_fac = ", ".join(data.get("servicesFacultatifsChoisis", []))
+    elements.append(Paragraph(services_fac or "—", value_style))
+
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph("Déclaration : Je certifie l'exactitude des informations fournies.", ParagraphStyle('Legal', parent=styles['Normal'], fontSize=8, italic=True)))
+
+    doc.build(elements)
+
+def create_client_zip(cni_b64: list[str], plan_b64: list[str], pdf_path: str, zip_name: str) -> str:
+    """Crée un ZIP contenant les images CNI, Plan et le PDF généré."""
+    zip_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "archives")
+    os.makedirs(zip_dir, exist_ok=True)
+    zip_full_path = os.path.join(zip_dir, zip_name)
+
+    with zipfile.ZipFile(zip_full_path, 'w') as zipf:
+        # PDF
+        zipf.write(pdf_path, os.path.basename(pdf_path))
+
+        # CNI Images
+        for i, b64 in enumerate(cni_b64):
+            img_data = base64.b64decode(b64.split(",")[-1])
+            zipf.writestr(f"CNI_face_{i+1}.jpg", img_data)
+
+        # Plan Images
+        for i, b64 in enumerate(plan_b64):
+            img_data = base64.b64decode(b64.split(",")[-1])
+            zipf.writestr(f"Plan_face_{i+1}.jpg", img_data)
+
+    return zip_full_path
 
 # ----------------------------------------------------------------------------
 # OCR Server: Flask API
 # ----------------------------------------------------------------------------
 app = Flask(__name__)
+
 CORS(app)
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Global error handler to mask technical details from the client and log them to DB."""
+    if isinstance(e, HTTPException):
+        # Let HTTP exceptions (like 404, 405) pass through but ensure JSON response
+        return jsonify({"erreur": e.description}), e.code
+
+    # 1. Log the full traceback for the admin (Railway logs)
+    logger.error("Unhandled Exception occurred: %s\n%s", str(e), traceback.format_exc())
+
+    # 2. Save to system_errors table in SQLite
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO system_errors (timestamp, endpoint, error_message, traceback, user_id, status_code) VALUES (?, ?, ?, ?, ?, ?)",
+            (_now_iso(), request.path, str(e), traceback.format_exc(), getattr(g, "user_id", None), 500)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as db_err:
+        logger.error("Failed to log error to database: %s", db_err)
+
+    # Return a sanitized message to the client
+    return jsonify({"erreur": "Une erreur interne est survenue. Veuillez contacter l'administrateur."}), 500
 
 config = ServerConfig()
 llm_client = LLMClient(config)
@@ -492,6 +730,23 @@ plan_processor = PlanProcessor(llm_client)
 
 init_db()
 
+
+@app.route("/admin/logs", methods=["GET"])
+@require_admin
+def get_admin_logs():
+    """Récupère les erreurs système pour l'administrateur."""
+    conn = get_db()
+    try:
+        # On récupère les erreurs les plus récentes en premier
+        rows = conn.execute(
+            "SELECT id, timestamp, endpoint, error_message, traceback, user_id, status_code FROM system_errors ORDER BY timestamp DESC"
+        ).fetchall()
+        return jsonify({
+            "succes": True,
+            "logs": [dict(row) for row in rows]
+        })
+    finally:
+        conn.close()
 
 @app.route("/", methods=["GET"])
 def index():
@@ -527,8 +782,8 @@ def inscription():
 
         mot_de_passe_hash = generate_password_hash(mot_de_passe)
         cursor = conn.execute(
-            "INSERT INTO users (nom, mot_de_passe_hash, date_creation) VALUES (?, ?, ?)",
-            (nom, mot_de_passe_hash, _now_iso()),
+            "INSERT INTO users (nom, mot_de_passe_hash, date_creation, role) VALUES (?, ?, ?, ?)",
+            (nom, mot_de_passe_hash, _now_iso(), 'CSO'),
         )
         conn.commit()
         user_id = cursor.lastrowid
@@ -564,7 +819,7 @@ def connexion():
 
     token = creer_session(user["id"])
     logger.info("Connexion CSO : %s", user["nom"])
-    return jsonify({"succes": True, "token": token, "nom": user["nom"]})
+    return jsonify({"succes": True, "token": token, "nom": user["nom"], "role": user["role"]})
 
 
 @app.route("/deconnexion", methods=["POST"])
@@ -586,7 +841,81 @@ def verifier_session():
     user = utilisateur_depuis_token(token)
     if not user:
         return jsonify({"erreur": "Session invalide ou expirée."}), 401
-    return jsonify({"succes": True, "nom": user["nom"]})
+    return jsonify({"succes": True, "nom": user["nom"], "role": user["role"]})
+
+
+@app.route("/archiver", methods=["POST"])
+@require_auth
+def archiver():
+    """Génère le PDF, crée le ZIP et enregistre l'archive en DB."""
+    payload = request.get_json(silent=True) or {}
+    data = payload.get("data")
+    cni_images = payload.get("cni_images", [])
+    plan_images = payload.get("plan_images", [])
+
+    if not data or not cni_images or not plan_images:
+        return jsonify({"erreur": "Données et images manquantes pour l'archivage."}), 400
+
+    try:
+        # 1. Nommage de l'archive
+        client_nom = (data.get("nom") or "Client").replace(" ", "_").upper()
+        compte_type = (data.get("compteTypeLabel") or "Inconnu").replace(" ", "_")
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        zip_name = f"{client_nom}-{compte_type}-By_{g.user_nom}-{date_str}.zip"
+
+        # 2. Génération PDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+            pdf_path = tmp_pdf.name
+
+        generate_client_pdf(data, pdf_path)
+
+        # 3. Création ZIP
+        zip_full_path = create_client_zip(cni_images, plan_images, pdf_path, zip_name)
+
+        # Nettoyage PDF temp
+        os.remove(pdf_path)
+
+        # 4. Enregistrement en DB
+        conn = get_db()
+        try:
+            conn.execute(
+                "INSERT INTO archives (reference, zip_path, date_archivage, created_by) VALUES (?, ?, ?, ?)",
+                (f"{client_nom} - {compte_type}", zip_name, _now_iso(), g.user_nom),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        logger.info("Archive créée avec succès : %s [CSO: %s]", zip_name, g.user_nom)
+        return jsonify({"succes": True, "zip_name": zip_name})
+
+    except Exception as e:
+        logger.error("Erreur archivage : %s\n%s", str(e), traceback.format_exc())
+        raise e
+
+
+@app.route("/archives", methods=["GET"])
+@require_auth
+def list_archives():
+    """Liste toutes les archives."""
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT * FROM archives ORDER BY date_archivage DESC").fetchall()
+        return jsonify({
+            "succes": True,
+            "archives": [dict(row) for row in rows]
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/download-archive/<filename>", methods=["GET"])
+@require_auth
+def download_archive(filename):
+    """Sert le fichier ZIP de l'archive."""
+    from flask import send_from_directory
+    archive_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "archives")
+    return send_from_directory(archive_dir, filename)
 
 
 def _cni_keys_to_camel_case(data: dict) -> dict:
@@ -666,6 +995,13 @@ def extraire_tout():
 
         final_data = {**_cni_keys_to_camel_case(cni_result["data"]), **processed_plan_data}
 
+        # Anti-False Positive Validation: Check for mandatory identity fields
+        mandatory_fields = ["nom", "prenom", "numeroCNI"]
+        is_valid = all(final_data.get(field) and str(final_data.get(field)).strip() for field in mandatory_fields)
+
+        if not is_valid:
+            return jsonify({"erreur": "L'image de la CNI est illisible ou incomplète. Veuillez fournir une image plus claire."}), 422
+
         return jsonify({
             "succes": True,
             "champs": final_data,
@@ -679,7 +1015,8 @@ def extraire_tout():
     except Exception as e:
         logger.error("Erreur pipeline : %s", e)
         traceback.print_exc()
-        return jsonify({"erreur": str(e)}), 500
+        # We raise the exception to let the global @app.errorhandler handle it and mask it
+        raise e
 
     finally:
         for path in temp_paths:
@@ -707,7 +1044,8 @@ def debug_ocr():
         res = llm_client.call_gemini_multimodal("Décris cette image brièvement", [path])
         return jsonify({"resultat": res})
     except Exception as e:
-        return jsonify({"erreur": str(e)}), 500
+        logger.error("Erreur debug OCR : %s", e)
+        raise e
     finally:
         try:
             os.remove(path)

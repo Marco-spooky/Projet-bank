@@ -20,7 +20,7 @@ const T = {
     welcomeSub: "Système de digitalisation des ouvertures de compte — CCA BANK",
     dashboard: "Tableau de bord",
     comptesJour: "Comptes créés aujourd'hui",
-    nouveauCompte: "Nouveau compte ➕",
+    nouveauCompte: "Nouveau compte",
     extraction: "Extraction Documents",
     importerCNI: "Cliquer pour importer la CNI",
     importerPlan: "Cliquer pour importer le plan de localisation",
@@ -67,7 +67,7 @@ const T = {
     servicesObligatoiresLabel: "Services obligatoires (inclus automatiquement)",
     servicesFacultatifsLabel: "Services facultatifs — à proposer au client",
     aucunFacultatif: "Aucun service facultatif sélectionné",
-    terminerBtn: "Terminer ✅",
+    terminerBtn: "Terminer",
     voirRecap: "Voir le récapitulatif →",
     // Authentification
     loginTitre: "Connexion",
@@ -86,6 +86,12 @@ const T = {
     deconnecter: "Déconnexion",
     verificationSession: "Vérification de la session...",
     bienvenueConnexion: "Connectez-vous pour accéder à AccountOCR",
+    adminLogs: "Logs Système",
+    adminLogsTitre: "Journal des Erreurs",
+    adminLogsSub: "Surveillance technique et débuggage",
+    logsVide: "Aucune erreur enregistrée.",
+    logsTableHeaders: { timestamp: "Heure", endpoint: "Endpoint", message: "Erreur", user: "Utilisateur" },
+    voirTraceback: "Voir Traceback",
   },
   en: {
     appName: "AccountOCR", bankName: "CCA BANK",
@@ -183,8 +189,8 @@ function IconBadge({ name, size = 52, dark }) {
     <div style={{
       width: size, height: size, borderRadius: "50%", flexShrink: 0,
       display: "flex", alignItems: "center", justifyContent: "center",
-      background: "linear-gradient(135deg,#3B0764,#6B21A8)",
-      boxShadow: dark ? "0 0 0 1px rgba(168,85,247,0.25)" : "0 2px 6px rgba(59,7,100,0.25)",
+      background: "linear-gradient(135deg,#002147,#004080)",
+      boxShadow: dark ? "0 0 0 1px rgba(0,33,71,0.5)" : "0 2px 6px rgba(0,33,71,0.25)",
     }}>
       <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         {ICON_PATHS[name] || ICON_PATHS.carte}
@@ -390,6 +396,7 @@ const LS_COMPTES_JOUR = "accountocr_comptes_jour";
 const LS_DATE = "accountocr_date";
 const LS_TOKEN = "accountocr_token";
 const LS_NOM = "accountocr_nom";
+const LS_ROLE = "accountocr_role";
 const API_URL = import.meta.env.VITE_API_URL || "https://projet-bank-production.up.railway.app";
 
 function sauvegarder(donnees, page) {
@@ -424,7 +431,7 @@ function incrementerComptesJour() {
 // ============================================================
 // CONTEXT AUTHENTIFICATION
 // ============================================================
-const AuthContext = createContext({ csoNom: "", token: null, deconnexion: () => { } });
+const AuthContext = createContext({ csoNom: "", role: "CSO", token: null, deconnexion: () => { } });
 
 // ============================================================
 // LOGO ACCOUNTOCR
@@ -440,8 +447,8 @@ function LogoAccountOCR() {
       <text x="27" y="23" fontSize="10" fontWeight="900" fill="white" fontFamily="Arial Black">O</text>
       <defs>
         <linearGradient id="g1" x1="0" y1="0" x2="38" y2="38" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#3B0764" />
-          <stop offset="1" stopColor="#6B21A8" />
+          <stop stopColor="#002147" />
+          <stop offset="1" stopColor="#003366" />
         </linearGradient>
       </defs>
     </svg>
@@ -449,7 +456,7 @@ function LogoAccountOCR() {
 }
 
 // Logo CCA Bank textuel professionnel
-function LogoCCABank({ dark }) {
+function LogoCCABank() {
   return (
     <img
       src="/logo1.webp"
@@ -466,17 +473,17 @@ function Header({ titre, onRetour, dark, setDark, langue, setLangue, t, serveurO
   const { csoNom, deconnexion } = useContext(AuthContext);
   return (
     <div className="sticky top-0 z-20" style={{
-      background: dark ? "linear-gradient(90deg,#1a0533,#2d0a5e)" : "linear-gradient(90deg,#3B0764,#6B21A8)"
+      background: dark ? "linear-gradient(90deg,#000B14,#001A33)" : "linear-gradient(90deg,#002147,#003366)"
     }}>
       <div className="flex items-center gap-3 px-5 h-14">
-        {onRetour && <button onClick={onRetour} className="text-purple-200 hover:text-white text-xl font-bold mr-1">{t.retour}</button>}
+        {onRetour && <button onClick={onRetour} className="text-slate-300 hover:text-white text-xl font-bold mr-1">{t.retour}</button>}
 
         {/* Logo + Nom AccountOCR */}
         <div className="flex items-center gap-2 flex-1">
           <LogoAccountOCR />
           <div>
             <div className="text-white font-black text-base leading-none">{t.appName}</div>
-            <div className="text-purple-300 text-xs leading-none mt-0.5">{titre}</div>
+            <div className="text-slate-300 text-xs leading-none mt-0.5">{titre}</div>
           </div>
         </div>
 
@@ -508,13 +515,13 @@ function Header({ titre, onRetour, dark, setDark, langue, setLangue, t, serveurO
 
           {/* Langue */}
           <button onClick={() => setLangue(langue === "fr" ? "en" : "fr")}
-            className="text-xs font-bold text-purple-200 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all">
+            className="text-xs font-bold text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all">
             {langue === "fr" ? "🇬🇧 EN" : "🇫🇷 FR"}
           </button>
 
           {/* Dark/Light */}
           <button onClick={() => setDark(!dark)}
-            className="text-xs font-bold text-purple-200 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all">
+            className="text-xs font-bold text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all">
             {dark ? "☀️" : "🌙"}
           </button>
 
@@ -532,16 +539,16 @@ function Header({ titre, onRetour, dark, setDark, langue, setLangue, t, serveurO
 function EtapeIndicateur({ etape, dark, t }) {
   const etapes = [t.etape1, t.etape2, t.etape3, t.etape4];
   return (
-    <div className={`flex items-center justify-center gap-1 py-3 border-b flex-wrap px-4 ${dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100"}`}>
+    <div className={`flex items-center justify-center gap-1 py-3 border-b flex-wrap px-4 ${dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-100"}`}>
       {etapes.map((e, i) => (
         <div key={i} className="flex items-center gap-1">
           <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold transition-all ${i + 1 === etape ? "text-white shadow" :
-            i + 1 < etape ? dark ? "bg-purple-900 text-purple-300" : "bg-purple-100 text-purple-700" :
+            i + 1 < etape ? dark ? "bg-navy-900 text-slate-300" : "bg-slate-100 text-navy-700" :
               dark ? "bg-gray-800 text-gray-500" : "bg-gray-100 text-gray-400"
-            }`} style={i + 1 === etape ? { background: "linear-gradient(90deg,#3B0764,#6B21A8)" } : {}}>
+            }`} style={i + 1 === etape ? { background: "linear-gradient(90deg,#002147,#003366)" } : {}}>
             <span>{i + 1 < etape ? "✓" : i + 1}</span><span>{e}</span>
           </div>
-          {i < etapes.length - 1 && <div className={`w-4 h-0.5 ${i + 1 < etape ? "bg-purple-600" : dark ? "bg-gray-700" : "bg-gray-200"}`} />}
+          {i < etapes.length - 1 && <div className={`w-4 h-0.5 ${i + 1 < etape ? "bg-navy-600" : dark ? "bg-gray-700" : "bg-gray-200"}`} />}
         </div>
       ))}
     </div>
@@ -559,17 +566,17 @@ function ChampCopie({ label, valeur, dark, t }) {
   };
   return (
     <div className={`flex items-center justify-between rounded-xl p-3 mb-2 border transition-all ${copie ? "border-green-400 bg-green-50" :
-      dark ? "border-purple-900 bg-gray-800 hover:border-purple-700" : "border-purple-100 bg-purple-50 hover:border-purple-300"
+      dark ? "border-navy-900 bg-gray-800 hover:border-navy-700" : "border-slate-200 bg-slate-50 hover:border-slate-300"
       }`}>
       <div className="flex-1 min-w-0 mr-3">
-        <div className="text-xs font-bold text-purple-500 uppercase tracking-wide mb-0.5">{label}</div>
+        <div className="text-xs font-bold text-navy-600 uppercase tracking-wide mb-0.5">{label}</div>
         <div className={`text-sm font-semibold truncate ${dark ? "text-gray-200" : "text-gray-800"}`}>
           {valeur || <span className={`italic text-xs ${dark ? "text-gray-600" : "text-gray-300"}`}>{t.nonRenseigne}</span>}
         </div>
       </div>
       <button onClick={copier} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex-shrink-0 transition-all ${copie ? "bg-green-500 text-white" :
-        dark ? "bg-purple-900 text-purple-300 border border-purple-700 hover:bg-purple-700 hover:text-white" :
-          "bg-white text-purple-700 border border-purple-200 hover:bg-purple-700 hover:text-white"
+        dark ? "bg-navy-900 text-slate-300 border border-navy-700 hover:bg-navy-700 hover:text-white" :
+          "bg-white text-navy-700 border border-slate-200 hover:bg-navy-700 hover:text-white"
         }`}>
         {copie ? "✓" : "📋"}
       </button>
@@ -588,8 +595,8 @@ function PageLogin({ onConnecte, dark, setDark, langue, setLangue, t }) {
   const [erreur, setErreur] = useState("");
   const [enCours, setEnCours] = useState(false);
 
-  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100";
-  const inputCls = `w-full px-4 py-3 rounded-xl border-2 text-sm outline-none transition-all ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-purple-600" : "bg-purple-50 border-purple-100 text-gray-800 focus:border-purple-600"}`;
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
+  const inputCls = `w-full px-4 py-3 rounded-xl border-2 text-sm outline-none transition-all ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-navy-600" : "bg-slate-50 border-slate-200 text-gray-800 focus:border-navy-600"}`;
 
   const soumettre = async (e) => {
     e.preventDefault();
@@ -620,7 +627,7 @@ function PageLogin({ onConnecte, dark, setDark, langue, setLangue, t }) {
       if (!res.ok || !data.succes) {
         throw new Error(data.erreur || t.erreurServeur);
       }
-      onConnecte(data.token, data.nom);
+      onConnecte(data.token, data.nom, data.role);
     } catch (err) {
       setErreur(err.message?.includes("fetch") || err.message?.includes("Failed") ? t.erreurServeur : err.message);
     } finally {
@@ -629,8 +636,8 @@ function PageLogin({ onConnecte, dark, setDark, langue, setLangue, t }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
-      <div className="sticky top-0 z-20" style={{ background: dark ? "linear-gradient(90deg,#1a0533,#2d0a5e)" : "linear-gradient(90deg,#3B0764,#6B21A8)" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
+      <div className="sticky top-0 z-20" style={{ background: dark ? "linear-gradient(90deg,#000B14,#001A33)" : "linear-gradient(90deg,#002147,#003366)" }}>
         <div className="flex items-center justify-between gap-3 px-5 h-14 max-w-md mx-auto">
           <div className="flex items-center gap-2">
             <LogoAccountOCR />
@@ -638,11 +645,11 @@ function PageLogin({ onConnecte, dark, setDark, langue, setLangue, t }) {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setLangue(langue === "fr" ? "en" : "fr")}
-              className="text-xs font-bold text-purple-200 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all">
+              className="text-xs font-bold text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all">
               {langue === "fr" ? "🇬🇧 EN" : "🇫🇷 FR"}
             </button>
             <button onClick={() => setDark(!dark)}
-              className="text-xs font-bold text-purple-200 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all">
+              className="text-xs font-bold text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all">
               {dark ? "☀️" : "🌙"}
             </button>
           </div>
@@ -654,17 +661,17 @@ function PageLogin({ onConnecte, dark, setDark, langue, setLangue, t }) {
           <div className="flex flex-col items-center gap-3 mb-6">
             <LogoAccountOCR />
             <div className="text-center">
-              <h1 className={`text-lg font-black ${dark ? "text-purple-300" : "text-purple-900"}`}>{t.loginTitre}</h1>
+              <h1 className={`text-lg font-black ${dark ? "text-slate-300" : "text-navy-900"}`}>{t.loginTitre}</h1>
               <p className={`text-xs mt-1 ${dark ? "text-gray-400" : "text-gray-500"}`}>{t.bienvenueConnexion}</p>
             </div>
           </div>
 
           {/* Onglets */}
-          <div className={`flex rounded-xl p-1 mb-5 ${dark ? "bg-gray-800" : "bg-purple-50"}`}>
+          <div className={`flex rounded-xl p-1 mb-5 ${dark ? "bg-gray-800" : "bg-slate-100"}`}>
             {["connexion", "inscription"].map(m => (
               <button key={m} type="button" onClick={() => { setMode(m); setErreur(""); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mode === m ? "text-white" : dark ? "text-gray-400" : "text-purple-400"}`}
-                style={mode === m ? { background: "linear-gradient(90deg,#3B0764,#6B21A8)" } : {}}>
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mode === m ? "text-white" : dark ? "text-gray-400" : "text-slate-500"}`}
+                style={mode === m ? { background: "linear-gradient(90deg,#002147,#003366)" } : {}}>
                 {m === "connexion" ? t.seConnecter : t.sInscrire}
               </button>
             ))}
@@ -693,13 +700,13 @@ function PageLogin({ onConnecte, dark, setDark, langue, setLangue, t }) {
 
             <button type="submit" disabled={enCours}
               className="w-full py-3 rounded-xl font-bold text-white text-sm transition-all"
-              style={{ background: enCours ? (dark ? "#1f0a3d" : "#D1D5DB") : "linear-gradient(90deg,#3B0764,#6B21A8)" }}>
+              style={{ background: enCours ? (dark ? "#001A33" : "#D1D5DB") : "linear-gradient(90deg,#002147,#003366)" }}>
               {enCours ? (mode === "inscription" ? t.inscriptionEnCours : t.connexionEnCours) : (mode === "inscription" ? t.sInscrire : t.seConnecter)}
             </button>
           </form>
 
           <button onClick={() => { setMode(mode === "connexion" ? "inscription" : "connexion"); setErreur(""); }}
-            className={`w-full text-center text-xs font-semibold mt-4 ${dark ? "text-purple-400 hover:text-purple-300" : "text-purple-600 hover:text-purple-800"}`}>
+            className={`w-full text-center text-xs font-semibold mt-4 ${dark ? "text-slate-400 hover:text-slate-300" : "text-navy-600 hover:text-navy-800"}`}>
             {mode === "connexion" ? t.pasDeCompte : t.dejaCompte}
           </button>
         </div>
@@ -711,19 +718,20 @@ function PageLogin({ onConnecte, dark, setDark, langue, setLangue, t }) {
 // ============================================================
 // PAGE DASHBOARD
 // ============================================================
-function PageDashboard({ onNouveauDossier, dark, setDark, langue, setLangue, t, comptesJour, serveurOK }) {
-  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100";
+function PageDashboard({ onNouveauDossier, onVoirArchives, onVoirAdmin, dark, setDark, langue, setLangue, t, comptesJour, serveurOK, role }) {
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
   return (
-    <div className="min-h-screen" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
       <Header titre={t.dashboard} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
       <div className="p-5 max-w-2xl mx-auto">
+
 
         {/* Bienvenue */}
         <div className={`rounded-2xl p-5 mb-5 border shadow-sm ${card}`}>
           <div className="flex items-center gap-3">
             <LogoAccountOCR />
             <div>
-              <h1 className={`text-lg font-black ${dark ? "text-purple-300" : "text-purple-900"}`}>{t.welcome} 👋</h1>
+              <h1 className={`text-lg font-black ${dark ? "text-slate-300" : "text-navy-900"}`}>{t.welcome} 👋</h1>
               <p className={`text-xs mt-0.5 ${dark ? "text-gray-400" : "text-gray-500"}`}>{t.welcomeSub}</p>
             </div>
           </div>
@@ -739,18 +747,32 @@ function PageDashboard({ onNouveauDossier, dark, setDark, langue, setLangue, t, 
 
         {/* Compteur du jour */}
         <div className={`rounded-2xl p-6 mb-5 border shadow-sm ${card}`} style={{
-          background: dark ? undefined : "linear-gradient(135deg, #F5F0FF, #EDE9FF)"
+          background: dark ? undefined : "linear-gradient(135deg, #F0F2F5, #E2E8F0)"
         }}>
-          <p className="text-xs font-bold uppercase tracking-widest mb-2 text-purple-500">{t.comptesJour}</p>
-          <div className="text-6xl font-black" style={{ color: dark ? "#C084FC" : "#3B0764" }}>{comptesJour}</div>
+          <p className="text-xs font-bold uppercase tracking-widest mb-2 text-navy-600" style={{ color: dark ? "#94A3B8" : "#003366" }}>{t.comptesJour}</p>
+          <div className="text-6xl font-black" style={{ color: dark ? "#60A5FA" : "#002147" }}>{comptesJour}</div>
         </div>
 
         {/* Bouton nouveau compte */}
-        <button onClick={onNouveauDossier}
-          className="w-full py-4 rounded-2xl font-black text-white text-base shadow-lg mb-2 transition-all hover:opacity-90"
-          style={{ background: "linear-gradient(90deg,#3B0764,#6B21A8)" }}>
-          {t.nouveauCompte}
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button onClick={onNouveauDossier}
+            className="py-4 rounded-2xl font-black text-white text-base shadow-lg transition-all hover:opacity-90"
+            style={{ background: "linear-gradient(90deg,#002147,#003366)" }}>
+            {t.nouveauCompte}
+          </button>
+          <button onClick={onVoirArchives}
+            className="py-4 rounded-2xl font-black text-navy-700 bg-white border-2 border-navy-700 text-base shadow-sm transition-all hover:bg-navy-50"
+            style={{ color: dark ? "#B2B2B2" : "#002147", borderColor: dark ? "#334155" : "#002147", background: dark ? "#1E293B" : "white" }}>
+            📂 Archives Numériques
+          </button>
+          {role === "ADMIN" && (
+            <button onClick={onVoirAdmin}
+              className="py-4 rounded-2xl font-black text-white text-base shadow-lg transition-all hover:opacity-90"
+              style={{ background: "linear-gradient(90deg,#4B5563,#1F2937)" }}>
+              ⚙️ Administration
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -760,23 +782,23 @@ function PageDashboard({ onNouveauDossier, dark, setDark, langue, setLangue, t, 
 // PAGE CATÉGORIE (Particulier / Entreprise)
 // ============================================================
 function PageCategorie({ onRetour, onSelect, dark, setDark, langue, setLangue, t, serveurOK }) {
-  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100";
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
   const categories = [
     { key: "particulier", label: t.particulierBtn, desc: t.particulierDesc, icon: "particulier" },
     { key: "entreprise", label: t.entrepriseBtn, desc: t.entrepriseDesc, icon: "entreprise" },
   ];
   return (
-    <div className="min-h-screen" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
       <Header titre={t.categorieTitre} onRetour={onRetour} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
       <EtapeIndicateur etape={1} dark={dark} t={t} />
       <div className="p-5 max-w-2xl mx-auto">
         <div className={`rounded-2xl shadow-sm border p-5 ${card}`}>
-          <h3 className={`font-bold mb-1 ${dark ? "text-purple-300" : "text-purple-900"}`}>{t.selectionnerCategorie}</h3>
+          <h3 className={`font-bold mb-1 ${dark ? "text-slate-300" : "text-navy-900"}`}>{t.selectionnerCategorie}</h3>
           <p className={`text-xs mb-4 ${dark ? "text-gray-400" : "text-gray-400"}`}>Cliquez sur la catégorie souhaitée.</p>
           <div className="grid grid-cols-2 gap-3">
             {categories.map(c => (
               <button key={c.key} onClick={() => onSelect(c.key)}
-                className={`flex flex-col items-center gap-3 p-6 rounded-xl border-2 font-bold text-sm transition-all ${dark ? "border-gray-700 bg-gray-800 text-purple-300 hover:border-purple-600" : "border-purple-100 bg-white text-purple-800 hover:border-purple-500"}`}>
+                className={`flex flex-col items-center gap-3 p-6 rounded-xl border-2 font-bold text-sm transition-all ${dark ? "border-gray-700 bg-gray-800 text-slate-300 hover:border-navy-600" : "border-slate-200 bg-white text-navy-800 hover:border-navy-500"}`}>
                 <IconBadge name={c.icon} size={56} dark={dark} />
                 <span>{c.label}</span>
                 <span className={`text-xs font-normal ${dark ? "text-gray-500" : "text-gray-400"}`}>{c.desc}</span>
@@ -793,21 +815,21 @@ function PageCategorie({ onRetour, onSelect, dark, setDark, langue, setLangue, t
 // PAGE TYPE DE COMPTE (selon la catégorie)
 // ============================================================
 function PageTypeCompte({ categorie, onRetour, onSelectType, dark, setDark, langue, setLangue, t, serveurOK, langueActuelle }) {
-  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100";
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
   const groupe = ACCOUNT_STRUCTURE[categorie];
   if (!groupe) return null;
   return (
-    <div className="min-h-screen" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
       <Header titre={groupe.label[langueActuelle]} onRetour={onRetour} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
       <EtapeIndicateur etape={1} dark={dark} t={t} />
       <div className="p-5 max-w-2xl mx-auto">
         <div className={`rounded-2xl shadow-sm border p-5 ${card}`}>
-          <h3 className={`font-bold mb-1 ${dark ? "text-purple-300" : "text-purple-900"}`}>{t.selectionnerType}</h3>
+          <h3 className={`font-bold mb-1 ${dark ? "text-slate-300" : "text-navy-900"}`}>{t.selectionnerType}</h3>
           <p className={`text-xs mb-4 ${dark ? "text-gray-400" : "text-gray-400"}`}>{groupe.label[langueActuelle]}</p>
           <div className="grid grid-cols-1 gap-3">
             {groupe.types.map(type => (
               <button key={type.key} onClick={() => onSelectType(type)}
-                className={`flex items-center gap-3 p-4 rounded-xl border-2 font-bold text-sm text-left transition-all ${dark ? "border-gray-700 bg-gray-800 text-purple-300 hover:border-purple-600" : "border-purple-100 bg-white text-purple-800 hover:border-purple-500"}`}>
+                className={`flex items-center gap-3 p-4 rounded-xl border-2 font-bold text-sm text-left transition-all ${dark ? "border-gray-700 bg-gray-800 text-slate-300 hover:border-navy-600" : "border-slate-200 bg-white text-navy-800 hover:border-navy-500"}`}>
                 <IconBadge name={type.icon} size={44} dark={dark} />
                 <span className="flex-1">{type.label[langueActuelle]}</span>
                 <span className={dark ? "text-gray-600" : "text-gray-300"}>→</span>
@@ -824,22 +846,22 @@ function PageTypeCompte({ categorie, onRetour, onSelectType, dark, setDark, lang
 // PAGE SOUS-TYPE (formule / pack)
 // ============================================================
 function PageSousType({ categorie, typeKey, onRetour, onSelectSubtype, dark, setDark, langue, setLangue, t, serveurOK, langueActuelle }) {
-  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100";
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
   const groupe = ACCOUNT_STRUCTURE[categorie];
   const type = groupe?.types.find(ty => ty.key === typeKey);
   if (!type) return null;
   return (
-    <div className="min-h-screen" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
       <Header titre={type.label[langueActuelle]} onRetour={onRetour} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
       <EtapeIndicateur etape={1} dark={dark} t={t} />
       <div className="p-5 max-w-2xl mx-auto">
         <div className={`rounded-2xl shadow-sm border p-5 ${card}`}>
-          <h3 className={`font-bold mb-1 ${dark ? "text-purple-300" : "text-purple-900"}`}>{t.selectionnerSousType}</h3>
+          <h3 className={`font-bold mb-1 ${dark ? "text-slate-300" : "text-navy-900"}`}>{t.selectionnerSousType}</h3>
           <p className={`text-xs mb-4 ${dark ? "text-gray-400" : "text-gray-400"}`}>{type.label[langueActuelle]}</p>
           <div className="grid grid-cols-1 gap-3">
             {type.subtypes.map(sub => (
               <button key={sub.key} onClick={() => onSelectSubtype(sub)}
-                className={`flex items-center gap-3 p-4 rounded-xl border-2 font-bold text-sm text-left transition-all ${dark ? "border-gray-700 bg-gray-800 text-purple-300 hover:border-purple-600" : "border-purple-100 bg-white text-purple-800 hover:border-purple-500"}`}>
+                className={`flex items-center gap-3 p-4 rounded-xl border-2 font-bold text-sm text-left transition-all ${dark ? "border-gray-700 bg-gray-800 text-slate-300 hover:border-navy-600" : "border-slate-200 bg-white text-navy-800 hover:border-navy-500"}`}>
                 <IconBadge name={sub.icon} size={44} dark={dark} />
                 <span className="flex-1">{sub.label[langueActuelle]}</span>
                 <span className={dark ? "text-gray-600" : "text-gray-300"}>→</span>
@@ -871,7 +893,7 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
   const refCNI = useRef();
   const refPlan = useRef();
   const peutExtraire = fichiersCNI.length > 0 && fichiersPlan.length > 0 && !enCours && !termine && serveurOK;
-  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100";
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
 
   // Empêche une fermeture/actualisation accidentelle qui tuerait la requête en cours
   useEffect(() => {
@@ -936,11 +958,11 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
     return (
       <div className="mb-3">
         <div onClick={!enCours && !atteintMax ? onClic : undefined}
-          className={`rounded-xl border-2 border-dashed p-5 flex flex-col items-center justify-center transition-all ${(enCours || atteintMax) ? "cursor-not-allowed" : "cursor-pointer"} ${enCours ? "opacity-60" : ""} ${hasFiles ? dark ? "border-purple-600 bg-purple-950" : "border-purple-600 bg-purple-50" :
-            dark ? "border-gray-700 bg-gray-800 hover:border-purple-600" : "border-purple-200 bg-purple-50 hover:border-purple-500"
+          className={`rounded-xl border-2 border-dashed p-5 flex flex-col items-center justify-center transition-all ${(enCours || atteintMax) ? "cursor-not-allowed" : "cursor-pointer"} ${enCours ? "opacity-60" : ""} ${hasFiles ? dark ? "border-navy-600 bg-navy-950" : "border-navy-600 bg-slate-50" :
+            dark ? "border-gray-700 bg-gray-800 hover:border-navy-600" : "border-slate-200 bg-slate-50 hover:border-navy-500"
             }`}>
           <span className="text-3xl mb-2">{hasFiles ? "✅" : label === "CNI" ? "🪪" : "📍"}</span>
-          <span className={`text-sm font-bold text-center px-2 ${dark ? hasFiles ? "text-purple-300" : "text-purple-500" : hasFiles ? "text-purple-800" : "text-purple-400"}`}>
+          <span className={`text-sm font-bold text-center px-2 ${dark ? hasFiles ? "text-slate-300" : "text-navy-500" : hasFiles ? "text-navy-800" : "text-navy-400"}`}>
             {displayText}
           </span>
           {!hasFiles && <span className={`text-xs mt-1 ${dark ? "text-gray-500" : "text-gray-400"}`}>{t.importFormats}</span>}
@@ -956,12 +978,12 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
   };
 
   return (
-    <div className="min-h-screen" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
       <Header titre={t.extraction} onRetour={onRetour} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
       <EtapeIndicateur etape={2} dark={dark} t={t} />
       <div className="p-5 max-w-2xl mx-auto">
         <div className={`rounded-2xl shadow-sm border p-5 mb-4 ${card}`}>
-          <h3 className={`font-bold mb-1 ${dark ? "text-purple-300" : "text-purple-900"}`}>Importer les documents</h3>
+          <h3 className={`font-bold mb-1 ${dark ? "text-slate-300" : "text-navy-900"}`}>Importer les documents</h3>
           <p className={`text-xs mb-4 ${dark ? "text-gray-400" : "text-gray-500"}`}>JPG, PNG ou PDF — EasyOCR + IA analysent automatiquement. 1 image (recto+verso réunis) ou 2 images (recto puis verso séparément).</p>
           <input ref={refCNI} type="file" accept="image/*,.pdf" multiple className="hidden" onChange={e => {
             ajouterFichiers(Array.from(e.target.files), fichiersCNI, setFichiersCNI, "accountocr_img_cni");
@@ -978,11 +1000,11 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
           {enCours && (
             <div className="mb-4 mt-2">
               <div className="flex justify-between mb-1">
-                <span className={`text-xs font-bold ${dark ? "text-purple-300" : "text-purple-800"}`}>{msgEtape}</span>
-                <span className={`text-xs font-bold ${dark ? "text-purple-300" : "text-purple-800"}`}>{progression}%</span>
+                <span className={`text-xs font-bold ${dark ? "text-slate-300" : "text-navy-800"}`}>{msgEtape}</span>
+                <span className={`text-xs font-bold ${dark ? "text-slate-300" : "text-navy-800"}`}>{progression}%</span>
               </div>
-              <div className={`w-full rounded-full h-3 ${dark ? "bg-gray-800" : "bg-purple-100"}`}>
-                <div className="h-3 rounded-full transition-all duration-500" style={{ width: `${progression}%`, background: "linear-gradient(90deg,#3B0764,#6B21A8)" }} />
+              <div className={`w-full rounded-full h-3 ${dark ? "bg-gray-800" : "bg-slate-100"}`}>
+                <div className="h-3 rounded-full transition-all duration-500" style={{ width: `${progression}%`, background: "linear-gradient(90deg,#002147,#003366)" }} />
               </div>
             </div>
           )}
@@ -991,7 +1013,7 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
           {!termine && (
             <button onClick={lancerExtraction} disabled={!peutExtraire}
               className="w-full py-3 rounded-xl font-bold text-sm text-white transition-all"
-              style={{ background: peutExtraire ? "linear-gradient(90deg,#3B0764,#6B21A8)" : dark ? "#1f0a3d" : "#D1D5DB" }}>
+              style={{ background: peutExtraire ? "linear-gradient(90deg,#002147,#003366)" : dark ? "#001A33" : "#D1D5DB" }}>
               {!fichiersCNI.length || !fichiersPlan.length ? t.importerFichiers : !serveurOK ? t.serveurKO : t.lancerExtraction}
             </button>
           )}
@@ -1000,44 +1022,44 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
         {termine && (
           <div className={`rounded-2xl shadow-sm border p-5 ${card}`}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className={`font-bold ${dark ? "text-purple-300" : "text-purple-900"}`}>{t.donneesExtraites}</h3>
+              <h3 className={`font-bold ${dark ? "text-slate-300" : "text-navy-900"}`}>{t.donneesExtraites}</h3>
               <span className="text-xs bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full">✅ {t.extractionReussie}</span>
             </div>
             <p className={`text-xs mb-4 ${dark ? "text-gray-500" : "text-gray-400"}`}>{t.verifierChamps}</p>
 
-            <p className={`text-xs font-black uppercase tracking-widest mb-2 ${dark ? "text-purple-500" : "text-purple-500"}`}>{t.cni}</p>
+            <p className={`text-xs font-black uppercase tracking-widest mb-2 ${dark ? "text-navy-500" : "text-navy-500"}`}>{t.cni}</p>
             {CHAMPS_CNI.map(c => (
               <div key={c.key} className="mb-2">
-                <label className={`block text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-purple-400" : "text-purple-600"}`}>{c.label}</label>
+                <label className={`block text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-slate-400" : "text-navy-600"}`}>{c.label}</label>
                 <input value={donnees[c.key] || ""} onChange={e => setDonnees({ ...donnees, [c.key]: e.target.value })}
-                  className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all ${estIncertain(donnees[c.key]) ? (dark ? "bg-red-900/30 border-red-800 text-red-300" : "bg-red-50 border-red-200 text-red-700") : (dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-purple-600" : "bg-purple-50 border-purple-100 text-gray-800 focus:border-purple-600")}`} />
+                  className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all ${estIncertain(donnees[c.key]) ? (dark ? "bg-red-900/30 border-red-800 text-red-300" : "bg-red-50 border-red-200 text-red-700") : (dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-navy-600" : "bg-slate-50 border-slate-200 text-gray-800 focus:border-navy-600")}`} />
               </div>
             ))}
 
-            <p className={`text-xs font-black uppercase tracking-widest mb-2 mt-4 ${dark ? "text-purple-500" : "text-purple-500"}`}>{t.plan}</p>
+            <p className={`text-xs font-black uppercase tracking-widest mb-2 mt-4 ${dark ? "text-navy-500" : "text-navy-500"}`}>{t.plan}</p>
             {CHAMPS_PLAN.map(c => (
               <div key={c.key} className="mb-2">
-                <label className={`block text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-purple-400" : "text-purple-600"}`}>{c.label}</label>
+                <label className={`block text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-slate-400" : "text-navy-600"}`}>{c.label}</label>
                 <input value={donnees[c.key] || ""} onChange={e => setDonnees({ ...donnees, [c.key]: e.target.value })}
-                  className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-purple-600" : "bg-purple-50 border-purple-100 text-gray-800 focus:border-purple-600"}`} />
+                  className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-navy-600" : "bg-slate-50 border-slate-200 text-gray-800 focus:border-navy-600"}`} />
               </div>
             ))}
 
-            <p className={`text-xs font-black uppercase tracking-widest mb-2 mt-4 ${dark ? "text-purple-500" : "text-purple-500"}`}>{t.personnesContacter}</p>
+            <p className={`text-xs font-black uppercase tracking-widest mb-2 mt-4 ${dark ? "text-navy-500" : "text-navy-500"}`}>{t.personnesContacter}</p>
             {CHAMPS_CONTACTS.map(c => (
               <div key={c.key} className="mb-2">
-                <label className={`block text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-purple-400" : "text-purple-600"}`}>{c.label}</label>
+                <label className={`block text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-slate-400" : "text-navy-600"}`}>{c.label}</label>
                 <input value={donnees[c.key] || ""} onChange={e => setDonnees({ ...donnees, [c.key]: e.target.value })}
-                  className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-purple-600" : "bg-purple-50 border-purple-100 text-gray-800 focus:border-purple-600"}`} />
+                  className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-navy-600" : "bg-slate-50 border-slate-200 text-gray-800 focus:border-navy-600"}`} />
               </div>
             ))}
 
-            <p className={`text-xs font-black uppercase tracking-widest mb-2 mt-4 ${dark ? "text-purple-500" : "text-purple-500"}`}>{t.infosCSO}</p>
+            <p className={`text-xs font-black uppercase tracking-widest mb-2 mt-4 ${dark ? "text-navy-500" : "text-navy-500"}`}>{t.infosCSO}</p>
             {CHAMPS_COMPL_TEXTE.map(c => (
               <div key={c.key} className="mb-2">
-                <label className={`block text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-purple-400" : "text-purple-600"}`}>{c.label}</label>
+                <label className={`block text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-slate-400" : "text-navy-600"}`}>{c.label}</label>
                 <input value={donnees[c.key] || ""} onChange={e => setDonnees({ ...donnees, [c.key]: e.target.value })}
-                  className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-purple-600" : "bg-purple-50 border-purple-100 text-gray-800 focus:border-purple-600"}`} />
+                  className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-navy-600" : "bg-slate-50 border-slate-200 text-gray-800 focus:border-navy-600"}`} />
               </div>
             ))}
 
@@ -1047,14 +1069,14 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
             ))}
 
             {donnees.autreCompteCCA === "OUI" && (
-              <div className={`rounded-xl p-4 mb-4 border ${dark ? "border-gray-700 bg-gray-800" : "border-purple-100 bg-purple-50"}`}>
-                <p className={`text-xs font-bold mb-3 ${dark ? "text-purple-400" : "text-purple-700"}`}>Si OUI, le(s) quel(s) :</p>
+              <div className={`rounded-xl p-4 mb-4 border ${dark ? "border-gray-700 bg-gray-800" : "border-slate-200 bg-slate-50"}`}>
+                <p className={`text-xs font-bold mb-3 ${dark ? "text-slate-400" : "text-navy-700"}`}>Si OUI, le(s) quel(s) :</p>
                 <div className="grid grid-cols-2 gap-2">
                   {CHAMPS_COMPL_COMPTES.map(c => (
                     <div key={c.key}>
                       <label className={`block text-xs font-bold mb-1 ${dark ? "text-gray-400" : "text-gray-600"}`}>{c.label}</label>
                       <input value={donnees[c.key] || ""} onChange={e => setDonnees({ ...donnees, [c.key]: e.target.value })}
-                        className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-purple-600" : "bg-purple-50 border-purple-100 text-gray-800 focus:border-purple-600"}`} />
+                        className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${dark ? "bg-gray-800 border-gray-700 text-gray-200 focus:border-navy-600" : "bg-slate-50 border-slate-200 text-gray-800 focus:border-navy-600"}`} />
                     </div>
                   ))}
                 </div>
@@ -1063,7 +1085,7 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
 
             <button onClick={() => onContinuer(donnees)}
               className="w-full mt-4 py-3 rounded-xl font-bold text-white text-sm"
-              style={{ background: "linear-gradient(90deg,#3B0764,#6B21A8)" }}>
+              style={{ background: "linear-gradient(90deg,#002147,#003366)" }}>
               {t.continuer} → {t.etape3}
             </button>
           </div>
@@ -1079,15 +1101,15 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
 function GroupeChoix({ label, options, valeur, onChange, dark, multiple = false }) {
   return (
     <div className="mb-4">
-      <label className={`block text-xs font-bold uppercase tracking-wide mb-2 ${dark ? "text-purple-400" : "text-purple-700"}`}>{label}</label>
+      <label className={`block text-xs font-bold uppercase tracking-wide mb-2 ${dark ? "text-slate-400" : "text-navy-700"}`}>{label}</label>
       <div className="flex flex-wrap gap-3">
         {options.map(opt => {
           const selectionne = multiple ? (valeur || []).includes(opt) : valeur === opt;
           return (
             <label key={opt} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all text-sm font-semibold ${selectionne
-              ? "border-purple-600 text-white"
-              : dark ? "border-gray-700 text-gray-300 hover:border-purple-600" : "border-purple-200 text-gray-700 hover:border-purple-500"
-              }`} style={selectionne ? { background: "linear-gradient(90deg,#3B0764,#6B21A8)" } : {}}>
+              ? "border-navy-600 text-white"
+              : dark ? "border-gray-700 text-gray-300 hover:border-navy-600" : "border-slate-200 text-gray-700 hover:border-navy-500"
+              }`} style={selectionne ? { background: "linear-gradient(90deg,#002147,#003366)" } : {}}>
               <input
                 type={multiple ? "checkbox" : "radio"}
                 name={label}
@@ -1103,7 +1125,7 @@ function GroupeChoix({ label, options, valeur, onChange, dark, multiple = false 
                 }}
                 className="hidden"
               />
-              <span className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center flex-shrink-0 ${selectionne ? "border-white" : dark ? "border-gray-500" : "border-purple-300"}`}>
+              <span className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center flex-shrink-0 ${selectionne ? "border-white" : dark ? "border-gray-500" : "border-slate-300"}`}>
                 {selectionne && <span className="text-white text-xs font-black">✓</span>}
               </span>
               {opt}
@@ -1118,9 +1140,9 @@ function GroupeChoix({ label, options, valeur, onChange, dark, multiple = false 
 // ============================================================
 // PAGE SERVICES & PRODUITS
 // ============================================================
-function PageServices({ donnees, onRetour, onContinuer, dark, setDark, langue, setLangue, t, serveurOK, langueActuelle }) {
+function PageServices({ donnees, onRetour, onContinuer, dark, setDark, langue, setLangue, t, serveurOK }) {
   const [choisis, setChoisis] = useState(donnees.servicesFacultatifsChoisis || []);
-  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100";
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
   const obligatoires = donnees.servicesObligatoires || [];
   const facultatifs = donnees.servicesFacultatifsDisponibles || [];
 
@@ -1131,17 +1153,17 @@ function PageServices({ donnees, onRetour, onContinuer, dark, setDark, langue, s
   const nomCompte = [donnees.compteTypeLabel, donnees.compteSousTypeLabel].filter(Boolean).join(" — ");
 
   return (
-    <div className="min-h-screen" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
       <Header titre={t.servicesTitre} onRetour={onRetour} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
       <EtapeIndicateur etape={3} dark={dark} t={t} />
       <div className="p-5 max-w-2xl mx-auto">
         <div className={`rounded-2xl shadow-sm border p-5 mb-4 ${card}`}>
-          <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-purple-400" : "text-purple-500"}`}>{t.compteSouscrit}</p>
-          <h3 className={`font-black text-lg ${dark ? "text-purple-300" : "text-purple-900"}`}>{nomCompte}</h3>
+          <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${dark ? "text-slate-400" : "text-navy-500"}`}>{t.compteSouscrit}</p>
+          <h3 className={`font-black text-lg ${dark ? "text-slate-300" : "text-navy-900"}`}>{nomCompte}</h3>
         </div>
 
         <div className={`rounded-2xl shadow-sm border p-5 mb-4 ${card}`}>
-          <h3 className={`font-bold text-sm mb-3 ${dark ? "text-purple-300" : "text-purple-900"}`}>✅ {t.servicesObligatoiresLabel}</h3>
+          <h3 className={`font-bold text-sm mb-3 ${dark ? "text-slate-300" : "text-navy-900"}`}>✅ {t.servicesObligatoiresLabel}</h3>
           <div className="flex flex-col gap-2">
             {obligatoires.map(s => (
               <div key={s} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${dark ? "border-green-800 bg-green-900/20" : "border-green-200 bg-green-50"}`}>
@@ -1155,16 +1177,16 @@ function PageServices({ donnees, onRetour, onContinuer, dark, setDark, langue, s
         </div>
 
         <div className={`rounded-2xl shadow-sm border p-5 mb-4 ${card}`}>
-          <h3 className={`font-bold text-sm mb-1 ${dark ? "text-purple-300" : "text-purple-900"}`}>☑️ {t.servicesFacultatifsLabel}</h3>
+          <h3 className={`font-bold text-sm mb-1 ${dark ? "text-slate-300" : "text-navy-900"}`}>☑️ {t.servicesFacultatifsLabel}</h3>
           <p className={`text-xs mb-3 ${dark ? "text-gray-500" : "text-gray-400"}`}>Demandez l'avis du client avant de cocher.</p>
           <div className="flex flex-col gap-2">
             {facultatifs.map(s => {
               const selectionne = choisis.includes(s);
               return (
                 <label key={s} onClick={() => toggle(s)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all ${selectionne ? "border-purple-600" : dark ? "border-gray-700 bg-gray-800 hover:border-purple-600" : "border-purple-100 bg-purple-50 hover:border-purple-400"}`}
-                  style={selectionne ? { background: dark ? "rgba(107,33,168,0.25)" : "#EDE9FF" } : {}}>
-                  <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${selectionne ? "border-purple-600 bg-purple-600" : dark ? "border-gray-500" : "border-purple-300"}`}>
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all ${selectionne ? "border-navy-600" : dark ? "border-gray-700 bg-gray-800 hover:border-navy-600" : "border-slate-200 bg-slate-50 hover:border-navy-400"}`}
+                  style={selectionne ? { background: dark ? "rgba(0,33,71,0.25)" : "#E2E8F0" } : {}}>
+                  <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${selectionne ? "border-navy-600 bg-navy-600" : dark ? "border-gray-500" : "border-slate-300"}`}>
                     {selectionne && <span className="text-white text-xs font-black">✓</span>}
                   </span>
                   <span className={`text-sm font-semibold ${dark ? "text-gray-200" : "text-gray-800"}`}>{s}</span>
@@ -1177,7 +1199,7 @@ function PageServices({ donnees, onRetour, onContinuer, dark, setDark, langue, s
 
         <button onClick={() => onContinuer({ ...donnees, servicesFacultatifsChoisis: choisis })}
           className="w-full py-3.5 rounded-xl font-bold text-white text-sm shadow-lg"
-          style={{ background: "linear-gradient(90deg,#3B0764,#6B21A8)" }}>
+          style={{ background: "linear-gradient(90deg,#002147,#003366)" }}>
           {t.voirRecap}
         </button>
       </div>
@@ -1186,13 +1208,105 @@ function PageServices({ donnees, onRetour, onContinuer, dark, setDark, langue, s
 }
 
 // ============================================================
-// PAGE RÉCAPITULATIF + IMPRESSION
+// PAGE ARCHIVES
 // ============================================================
+function PageArchives({ onRetour, dark, setDark, langue, setLangue, t, serveurOK }) {
+  const { token } = useContext(AuthContext);
+  const [archives, setArchives] = useState([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState("");
+
+  useEffect(() => {
+    const chargerArchives = async () => {
+      try {
+        const res = await fetch(`${API_URL}/archives`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.succes) setArchives(data.archives);
+        else setErreur(data.erreur || "Erreur lors du chargement");
+      } catch (e) {
+        setErreur("Serveur injoignable");
+      } finally {
+        setChargement(false);
+      }
+    };
+    chargerArchives();
+  }, [token]);
+
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
+
+  return (
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
+      <Header titre="Archives Numériques" onRetour={onRetour} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
+      <div className="p-5 max-w-3xl mx-auto">
+        <div className={`rounded-2xl shadow-sm border p-5 ${card}`}>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className={`text-lg font-black ${dark ? "text-slate-300" : "text-navy-900"}`}>Historique des dossiers</h3>
+              <p className={`text-xs ${dark ? "text-gray-400" : "text-gray-500"}`}>Liste des comptes digitalisés et archivés.</p>
+            </div>
+            <div className="text-xs font-bold px-3 py-1 rounded-full bg-navy-100 text-navy-700">
+              {archives.length} fichiers
+            </div>
+          </div>
+
+          {chargement ? (
+            <div className="flex justify-center py-10">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navy-600"></div>
+            </div>
+          ) : erreur ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center text-red-700 text-sm font-semibold">
+              ⚠️ {erreur}
+            </div>
+          ) : archives.length === 0 ? (
+            <div className="text-center py-10">
+              <p className={`text-sm ${dark ? "text-gray-500" : "text-gray-400"}`}>Aucune archive disponible pour l'instant.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className={`border-b ${dark ? "border-gray-700" : "border-slate-200"}`}>
+                    <th className={`px-4 py-3 font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>Référence Client</th>
+                    <th className={`px-4 py-3 font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>Date</th>
+                    <th className={`px-4 py-3 font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>CSO</th>
+                    <th className={`px-4 py-3 text-right font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archives.map((arc, i) => (
+                    <tr key={i} className={`border-b last:border-0 transition-colors ${dark ? "border-gray-800 hover:bg-gray-800/50" : "border-slate-100 hover:bg-slate-50"}`}>
+                      <td className={`px-4 py-3 font-semibold ${dark ? "text-slate-300" : "text-gray-800"}`}>{arc.reference}</td>
+                      <td className={`px-4 py-3 ${dark ? "text-gray-400" : "text-gray-600"}`}>{arc.date_archivage.split("T")[0]}</td>
+                      <td className={`px-4 py-3 ${dark ? "text-gray-400" : "text-gray-600"}`}>{arc.created_by}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => window.open(`${API_URL}/download-archive/${arc.zip_path}`, '_blank')}
+                          className="text-xs font-bold text-navy-600 hover:text-navy-800 bg-navy-50 hover:bg-navy-100 px-3 py-1.5 rounded-lg transition-all"
+                        >
+                          Télécharger ZIP
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 function PageRecapitulatif({ onRetour, onTerminer, donnees, dark, setDark, langue, setLangue, t, serveurOK }) {
+  const { token } = useContext(AuthContext);
   const [toutCopie, setToutCopie] = useState(false);
+  const [archivageEnCours, setArchivageEnCours] = useState(false);
+  const [archiveErreur, setArchiveErreur] = useState("");
   const imgCni = localStorage.getItem("accountocr_img_cni");
   const imgPlan = localStorage.getItem("accountocr_img_plan");
-  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-purple-100";
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
 
   const nomCompte = [donnees.compteTypeLabel, donnees.compteSousTypeLabel].filter(Boolean).join(" — ");
   const servicesObligatoires = donnees.servicesObligatoires || [];
@@ -1232,6 +1346,34 @@ function PageRecapitulatif({ onRetour, onTerminer, donnees, dark, setDark, langu
     lignes.push(`Services facultatifs choisis: ${servicesChoisis.join(", ") || "—"}`);
     try { await navigator.clipboard.writeText(lignes.join("\n")); } catch (e) { }
     setToutCopie(true); setTimeout(() => setToutCopie(false), 2000);
+  };
+
+  const handleTerminer = async () => {
+    setArchivageEnCours(true);
+    setArchiveErreur("");
+    try {
+      const res = await fetch(`${API_URL}/archiver`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          data: donnees,
+          cni_images: imgCni ? [imgCni] : [],
+          plan_images: imgPlan ? [imgPlan] : [],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.succes) throw new Error(data.erreur || "Erreur lors de l'archivage");
+
+      alert("Dossier archivé avec succès !");
+      onTerminer();
+    } catch (e) {
+      setArchiveErreur(e.message);
+    } finally {
+      setArchivageEnCours(false);
+    }
   };
 
 
@@ -1482,15 +1624,15 @@ function PageRecapitulatif({ onRetour, onTerminer, donnees, dark, setDark, langu
 
 
   return (
-    <div className="min-h-screen" style={{ background: dark ? "#0a0118" : "#F5F0FF" }}>
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
       <Header titre={t.recapitulatif} onRetour={onRetour} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
       <EtapeIndicateur etape={4} dark={dark} t={t} />
       <div className="p-5 max-w-2xl mx-auto">
         <div className={`rounded-2xl shadow-sm border p-5 mb-4 ${card}`}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className={`font-bold ${dark ? "text-purple-300" : "text-purple-900"}`}>{t.toutesInfos}</h3>
+            <h3 className={`font-bold ${dark ? "text-slate-300" : "text-navy-900"}`}>{t.toutesInfos}</h3>
             <button onClick={copierTout} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${toutCopie ? "bg-green-500 text-white" :
-              dark ? "bg-purple-900 text-purple-300 hover:bg-purple-700 hover:text-white" : "bg-purple-100 text-purple-700 hover:text-white"
+              dark ? "bg-navy-900 text-slate-300 hover:bg-navy-700 hover:text-white" : "bg-slate-100 text-navy-700 hover:text-white"
               }`}>
               {toutCopie ? `✓ ${t.copie}` : t.copierTout}
             </button>
@@ -1498,17 +1640,17 @@ function PageRecapitulatif({ onRetour, onTerminer, donnees, dark, setDark, langu
           <p className={`text-xs mb-4 ${dark ? "text-gray-500" : "text-gray-400"}`}>{t.collerAmplitude}</p>
 
           <div className={`rounded-2xl shadow-sm border p-4 mb-6 ${card}`}>
-            <h3 className={`font-bold text-xs uppercase tracking-widest mb-3 ${dark ? "text-purple-400" : "text-purple-700"}`}>Aperçu des documents</h3>
+            <h3 className={`font-bold text-xs uppercase tracking-widest mb-3 ${dark ? "text-slate-400" : "text-navy-700"}`}>Aperçu des documents</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col items-center gap-2">
-                <span className="text-[10px] font-bold uppercase text-purple-500">{t.cni}</span>
-                <div className={`w-full h-32 rounded-lg border overflow-hidden bg-gray-100 ${dark ? "bg-gray-800 border-gray-700" : "border-purple-100"}`}>
+                <span className="text-[10px] font-bold uppercase text-navy-500">{t.cni}</span>
+                <div className={`w-full h-32 rounded-lg border overflow-hidden bg-gray-100 ${dark ? "bg-gray-800 border-gray-700" : "border-slate-200"}`}>
                   {imgCni ? <img src={imgCni} className="w-full h-full object-contain" /> : <div className="flex items-center justify-center h-full text-gray-400 text-[10px]">Aucune image</div>}
                 </div>
               </div>
               <div className="flex flex-col items-center gap-2">
-                <span className="text-[10px] font-bold uppercase text-purple-500">{t.plan}</span>
-                <div className={`w-full h-32 rounded-lg border overflow-hidden bg-gray-100 ${dark ? "bg-gray-800 border-gray-700" : "border-purple-100"}`}>
+                <span className="text-[10px] font-bold uppercase text-navy-500">{t.plan}</span>
+                <div className={`w-full h-32 rounded-lg border overflow-hidden bg-gray-100 ${dark ? "bg-gray-800 border-gray-700" : "border-slate-200"}`}>
                   {imgPlan ? <img src={imgPlan} className="w-full h-full object-contain" /> : <div className="flex items-center justify-center h-full text-gray-400 text-[10px]">Aucune image</div>}
                 </div>
               </div>
@@ -1517,9 +1659,9 @@ function PageRecapitulatif({ onRetour, onTerminer, donnees, dark, setDark, langu
 
           {/* Compte & Services */}
           <div className="mb-4">
-            <p className={`text-xs font-black uppercase tracking-widest mb-2 ${dark ? "text-purple-500" : "text-purple-500"}`}>{t.compteSouscrit}</p>
-            <div className={`rounded-xl p-3 mb-2 border ${dark ? "border-purple-900 bg-gray-800" : "border-purple-100 bg-purple-50"}`}>
-              <span className={`text-sm font-bold ${dark ? "text-purple-300" : "text-purple-800"}`}>{nomCompte || t.nonRenseigne}</span>
+            <p className={`text-xs font-black uppercase tracking-widest mb-2 ${dark ? "text-navy-500" : "text-navy-500"}`}>{t.compteSouscrit}</p>
+            <div className={`rounded-xl p-3 mb-2 border ${dark ? "border-navy-900 bg-gray-800" : "border-slate-200 bg-slate-50"}`}>
+              <span className={`text-sm font-bold ${dark ? "text-slate-300" : "text-navy-800"}`}>{nomCompte || t.nonRenseigne}</span>
             </div>
             <p className={`text-xs font-bold mt-3 mb-1 ${dark ? "text-green-400" : "text-green-700"}`}>{t.servicesObligatoiresLabel}</p>
             <div className="flex flex-wrap gap-2 mb-2">
@@ -1527,24 +1669,24 @@ function PageRecapitulatif({ onRetour, onTerminer, donnees, dark, setDark, langu
                 <span key={s} className={`text-xs font-semibold px-2.5 py-1 rounded-full ${dark ? "bg-green-900/30 text-green-300" : "bg-green-100 text-green-700"}`}>{s}</span>
               ))}
             </div>
-            <p className={`text-xs font-bold mt-3 mb-1 ${dark ? "text-purple-400" : "text-purple-700"}`}>{t.servicesFacultatifsLabel}</p>
+            <p className={`text-xs font-bold mt-3 mb-1 ${dark ? "text-slate-400" : "text-navy-700"}`}>{t.servicesFacultatifsLabel}</p>
             <div className="flex flex-wrap gap-2">
               {servicesChoisis.length ? servicesChoisis.map(s => (
-                <span key={s} className={`text-xs font-semibold px-2.5 py-1 rounded-full ${dark ? "bg-purple-900/40 text-purple-300" : "bg-purple-100 text-purple-700"}`}>{s}</span>
+                <span key={s} className={`text-xs font-semibold px-2.5 py-1 rounded-full ${dark ? "bg-navy-900/40 text-slate-300" : "bg-slate-100 text-navy-700"}`}>{s}</span>
               )) : <span className={`text-xs italic ${dark ? "text-gray-600" : "text-gray-400"}`}>{t.aucunFacultatif}</span>}
             </div>
           </div>
 
           {sections.map(s => (
             <div key={s.titre} className="mb-4">
-              <p className={`text-xs font-black uppercase tracking-widest mb-2 ${dark ? "text-purple-500" : "text-purple-500"}`}>{s.titre}</p>
+              <p className={`text-xs font-black uppercase tracking-widest mb-2 ${dark ? "text-navy-500" : "text-navy-500"}`}>{s.titre}</p>
               {s.champs.map(c => {
                 if (c.key === "salaire") {
                   return (
                     <div key={c.key} className="mb-2">
                       <ChampCopie label={c.label} valeur={donnees[c.key]} dark={dark} t={t} />
                       {donnees.salaireLettres && (
-                        <div className={`text-[10px] italic pl-3 mb-2 ${dark ? "text-purple-400" : "text-purple-600"}`}>
+                        <div className={`text-[10px] italic pl-3 mb-2 ${dark ? "text-slate-400" : "text-navy-600"}`}>
                           En lettres : {donnees.salaireLettres}
                         </div>
                       )}
@@ -1564,10 +1706,16 @@ function PageRecapitulatif({ onRetour, onTerminer, donnees, dark, setDark, langu
           {t.imprimer}
         </button>
 
-        <button onClick={onTerminer}
+        {archiveErreur && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-xs text-red-700 font-semibold">
+            ⚠️ {archiveErreur}
+          </div>
+        )}
+
+        <button onClick={handleTerminer} disabled={archivageEnCours}
           className="w-full py-3.5 rounded-xl font-bold text-white text-sm shadow-lg"
-          style={{ background: "linear-gradient(90deg,#3B0764,#6B21A8)" }}>
-          {t.terminerBtn}
+          style={{ background: archivageEnCours ? "#D1D5DB" : "linear-gradient(90deg,#002147,#003366)" }}>
+          {archivageEnCours ? "Archivage en cours..." : t.terminerBtn}
         </button>
       </div>
     </div>
@@ -1575,9 +1723,121 @@ function PageRecapitulatif({ onRetour, onTerminer, donnees, dark, setDark, langu
 }
 
 // ============================================================
+// PAGE ADMIN LOGS
+// ============================================================
+function PageAdminLogs({ onRetour, dark, setDark, langue, setLangue, t, serveurOK }) {
+  const { token } = useContext(AuthContext);
+  const [logs, setLogs] = useState([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState("");
+  const [selectedLog, setSelectedLog] = useState(null);
+
+  useEffect(() => {
+    const chargerLogs = async () => {
+      try {
+        const res = await fetch(`${API_URL}/admin/logs`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.succes) setLogs(data.logs);
+        else setErreur(data.erreur || "Erreur lors du chargement des logs");
+      } catch (e) {
+        setErreur("Serveur injoignable");
+      } finally {
+        setChargement(false);
+      }
+    };
+    chargerLogs();
+  }, [token]);
+
+  const card = dark ? "bg-gray-900 border-gray-800" : "bg-white border-slate-200";
+
+  return (
+    <div className="min-h-screen" style={{ background: dark ? "#001220" : "#F0F2F5" }}>
+      <Header titre={t.adminLogs} onRetour={onRetour} dark={dark} setDark={setDark} langue={langue} setLangue={setLangue} t={t} serveurOK={serveurOK} />
+      <div className="p-5 max-w-5xl mx-auto">
+        <div className={`rounded-2xl shadow-sm border p-5 ${card}`}>
+          <div className="mb-6">
+            <h3 className={`text-lg font-black ${dark ? "text-slate-300" : "text-navy-900"}`}>{t.adminLogsTitre}</h3>
+            <p className={`text-xs ${dark ? "text-gray-400" : "text-gray-500"}`}>{t.adminLogsSub}</p>
+          </div>
+
+          {chargement ? (
+            <div className="flex justify-center py-10">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navy-600"></div>
+            </div>
+          ) : erreur ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center text-red-700 text-sm font-semibold">
+              ⚠️ {erreur}
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="text-center py-10">
+              <p className={`text-sm ${dark ? "text-gray-500" : "text-gray-400"}`}>{t.logsVide}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className={`border-b ${dark ? "border-gray-700" : "border-slate-200"}`}>
+                  <tr>
+                    <th className={`px-4 py-3 font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>{t.logsTableHeaders.timestamp}</th>
+                    <th className={`px-4 py-3 font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>{t.logsTableHeaders.endpoint}</th>
+                    <th className={`px-4 py-3 font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>{t.logsTableHeaders.message}</th>
+                    <th className={`px-4 py-3 font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>{t.logsTableHeaders.user}</th>
+                    <th className={`px-4 py-3 text-right font-bold ${dark ? "text-slate-400" : "text-slate-600"}`}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((log) => (
+                    <tr key={log.id} className={`border-b last:border-0 transition-colors ${dark ? "border-gray-800 hover:bg-gray-800/50" : "border-slate-100 hover:bg-slate-50"}`}>
+                      <td className={`px-4 py-3 font-mono text-xs ${dark ? "text-gray-400" : "text-gray-600"}`}>{log.timestamp.replace("T", " ").substring(0, 19)}</td>
+                      <td className={`px-4 py-3 font-semibold ${dark ? "text-slate-300" : "text-gray-800"}`}>{log.endpoint}</td>
+                      <td className={`px-4 py-3 ${dark ? "text-gray-300" : "text-gray-700"}`}>{log.error_message}</td>
+                      <td className={`px-4 py-3 ${dark ? "text-gray-400" : "text-gray-600"}`}>{log.user_id || "Anonyme"}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button onClick={() => setSelectedLog(log)}
+                          className="text-xs font-bold text-navy-600 hover:text-navy-800 bg-navy-50 hover:bg-navy-100 px-3 py-1.5 rounded-lg transition-all">
+                          {t.voirTraceback}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal Traceback */}
+      {selectedLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-4xl max-h-[80vh] rounded-2xl shadow-2xl border flex flex-col ${card}`}>
+            <div className={`flex items-center justify-between p-4 border-b ${dark ? "border-gray-800" : "border-slate-200"}`}>
+              <h4 className={`font-black ${dark ? "text-slate-300" : "text-navy-900"}`}>Traceback Technique</h4>
+              <button onClick={() => setSelectedLog(null)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div className="p-4 overflow-auto flex-1">
+              <pre className={`text-xs font-mono p-4 rounded-xl leading-relaxed ${dark ? "bg-gray-950 text-green-400 border border-gray-800" : "bg-slate-900 text-green-400 border border-slate-700"}`}>
+                {selectedLog.traceback}
+              </pre>
+            </div>
+            <div className="p-4 border-t text-right border-gray-800">
+              <button onClick={() => setSelectedLog(null)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold ${dark ? "bg-gray-800 text-slate-300 hover:bg-gray-700" : "bg-slate-100 text-navy-700 hover:bg-slate-200"}`}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // APP
 // ============================================================
-export default function App() {
+
   const [dark, setDark] = useState(false);
   const [langue, setLangue] = useState("fr");
   const [comptesJour, setComptesJour] = useState(getComptesJour());
@@ -1589,6 +1849,7 @@ export default function App() {
   // ---- Authentification ----
   const [token, setToken] = useState(() => localStorage.getItem(LS_TOKEN) || null);
   const [csoNom, setCsoNom] = useState(() => localStorage.getItem(LS_NOM) || "");
+  const [role, setRole] = useState(() => localStorage.getItem(LS_ROLE) || "CSO");
   const [authChecking, setAuthChecking] = useState(true);
 
   useEffect(() => {
@@ -1613,10 +1874,12 @@ export default function App() {
         if (res.ok && data.succes) {
           setToken(savedToken);
           setCsoNom(data.nom);
+          setRole(data.role);
           localStorage.setItem(LS_NOM, data.nom);
+          localStorage.setItem(LS_ROLE, data.role);
         } else {
-          localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_NOM);
-          setToken(null); setCsoNom("");
+          localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_NOM); localStorage.removeItem(LS_ROLE);
+          setToken(null); setCsoNom(""); setRole("CSO");
         }
       } catch (e) {
         // Serveur injoignable au démarrage : on garde la session locale,
@@ -1628,12 +1891,15 @@ export default function App() {
     verifierSession();
   }, []);
 
-  const seConnecter = (newToken, nom) => {
+  const seConnecter = (newToken, nom, userRole) => {
     localStorage.setItem(LS_TOKEN, newToken);
     localStorage.setItem(LS_NOM, nom);
+    localStorage.setItem(LS_ROLE, userRole);
     setToken(newToken);
     setCsoNom(nom);
+    setRole(userRole);
   };
+
 
   const deconnexion = () => {
     const savedToken = localStorage.getItem(LS_TOKEN);
@@ -1643,9 +1909,9 @@ export default function App() {
         headers: { "Authorization": `Bearer ${savedToken}` },
       }).catch(() => { });
     }
-    localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_NOM);
+    localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_NOM); localStorage.removeItem(LS_ROLE);
     localStorage.removeItem(LS_DONNEES); localStorage.removeItem(LS_PAGE);
-    setToken(null); setCsoNom(""); setDonnees({}); setPage("dashboard");
+    setToken(null); setCsoNom(""); setRole("CSO"); setDonnees({}); setPage("dashboard");
   };
 
   useEffect(() => {
@@ -1694,10 +1960,10 @@ export default function App() {
   }
 
   return (
-    <AuthContext.Provider value={{ csoNom, token, deconnexion }}>
+    <AuthContext.Provider value={{ csoNom, role, token, deconnexion }}>
       {(() => {
         if (page === "dashboard")
-          return <PageDashboard {...props} comptesJour={comptesJour} onNouveauDossier={() => allerVers("categorie", {})} />;
+          return <PageDashboard {...props} role={role} comptesJour={comptesJour} onNouveauDossier={() => allerVers("categorie", {})} onVoirArchives={() => allerVers("archives")} onVoirAdmin={() => allerVers("admin-logs")} />;
 
         if (page === "categorie")
           return <PageCategorie {...props} onRetour={() => allerVers("dashboard")} onSelect={(cat) => allerVers("type", { ...donnees, compteCategorie: cat })} />;
@@ -1735,12 +2001,14 @@ export default function App() {
           return <PageExtraction {...props} donneesInitiales={donnees}
             onRetour={() => allerVers(donnees.compteSousType ? "soustype" : "type")}
             onContinuer={d => allerVers("services", d)} />;
-
         if (page === "services")
           return <PageServices {...props} donnees={donnees} onRetour={() => allerVers("extraction")} onContinuer={d => allerVers("recap", d)} />;
-
+        if (page === "archives")
+          return <PageArchives {...props} onRetour={() => allerVers("dashboard")} />;
         if (page === "recap")
           return <PageRecapitulatif {...props} donnees={donnees} onRetour={() => allerVers("services")} onTerminer={terminer} />;
+        if (page === "admin-logs")
+          return <PageAdminLogs {...props} onRetour={() => allerVers("dashboard")} />;
 
         return null;
       })()}
