@@ -2014,4 +2014,3 @@ function PageAdminLogs({ onRetour, dark, setDark, langue, setLangue, t, serveurO
       })()}
     </AuthContext.Provider>
   );
-}
