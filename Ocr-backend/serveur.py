@@ -9,6 +9,8 @@ import traceback
 import mimetypes
 import sqlite3
 import secrets
+import uuid
+import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
@@ -435,7 +437,19 @@ def init_db() -> None:
                 status_code INTEGER,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             );
+
+            CREATE TABLE IF NOT EXISTS ocr_tasks (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                result TEXT,
+                error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
             """
+
         )
 
         # Migration pour les anciennes versions de la DB
@@ -692,10 +706,107 @@ def create_client_zip(cni_b64: list[str], plan_b64: list[str], pdf_path: str, zi
 
     return zip_full_path
 
+def ocr_worker():
+    """Worker en arrière-plan : traite les tâches d'extraction OCR pending."""
+    logger.info("Worker OCR démarré.")
+    while True:
+        try:
+            conn = get_db()
+            # 1. Récupérer la tâche pending la plus ancienne
+            task = conn.execute(
+                "SELECT * FROM ocr_tasks WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
+            ).fetchone()
+
+            if not task:
+                conn.close()
+                time.sleep(2)
+                continue
+
+            task_id = task["id"]
+            user_id = task["user_id"]
+
+            # 2. Marquer comme processing
+            conn.execute(
+                "UPDATE ocr_tasks SET status = 'processing', updated_at = ? WHERE id = ?",
+                (_now_iso(), task_id)
+            )
+            conn.commit()
+            conn.close()
+
+            logger.info("Traitement de la tâche %s [User: %s]", task_id, user_id)
+
+            # 3. Localiser les fichiers dans uploads/
+            uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+            files_in_dir = os.listdir(uploads_dir)
+
+            cni_paths = [os.path.join(uploads_dir, f) for f in files_in_dir if f.startswith(f"{task_id}_cni")]
+            plan_paths = [os.path.join(uploads_dir, f) for f in files_in_dir if f.startswith(f"{task_id}_plan")]
+
+            # Trier pour garder l'ordre (recto/verso)
+            cni_paths.sort()
+            plan_paths.sort()
+
+            try:
+                # A. Extraction CNI
+                cni_result = extract_cni(cni_paths)
+
+                # B. Extraction Plan
+                plan_data = plan_processor.extract_plan_data(plan_paths)
+
+                # C. Normalisation (identique à l'ancienne logique)
+                processed_plan_data = {k: str(v).upper() if v else "" for k, v in plan_data.items()}
+                salaire_val = plan_data.get("salaire", "").strip()
+                if salaire_val and salaire_val.isdigit():
+                    try:
+                        processed_plan_data["salaireLettres"] = num2words.num2words(int(salaire_val), lang='fr').capitalize()
+                    except Exception:
+                        processed_plan_data["salaireLettres"] = ""
+                else:
+                    processed_plan_data["salaireLettres"] = ""
+
+                final_data = {**_cni_keys_to_camel_case(cni_result["data"]), **processed_plan_data}
+
+                # D. Validation Anti-False Positive
+                mandatory_fields = ["nom", "prenom", "numeroCNI"]
+                is_valid = all(final_data.get(field) and str(final_data.get(field)).strip() for field in mandatory_fields)
+
+                if not is_valid:
+                    raise ValueError("L'image de la CNI est illisible ou incomplète.")
+
+                # E. Enregistrement du résultat
+                conn = get_db()
+                conn.execute(
+                    "UPDATE ocr_tasks SET status = 'completed', result = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(final_data), _now_iso(), task_id)
+                )
+                conn.commit()
+                conn.close()
+                logger.info("Tâche %s terminée avec succès.", task_id)
+
+            except Exception as e:
+                logger.error("Erreur lors du traitement de la tâche %s : %s", task_id, str(e))
+                conn = get_db()
+                conn.execute(
+                    "UPDATE ocr_tasks SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
+                    (str(e), _now_iso(), task_id)
+                )
+                conn.commit()
+                conn.close()
+            finally:
+                # Nettoyage des fichiers
+                for p in cni_paths + plan_paths:
+                    try: os.remove(p)
+                    except Exception: pass
+
+        except Exception as global_err:
+            logger.error("Erreur critique dans le worker OCR : %s", global_err)
+            time.sleep(5)
+
 # ----------------------------------------------------------------------------
 # OCR Server: Flask API
 # ----------------------------------------------------------------------------
 app = Flask(__name__)
+
 
 CORS(app)
 
@@ -938,9 +1049,8 @@ def _cni_keys_to_camel_case(data: dict) -> dict:
 @require_auth
 def extraire_tout():
     """
-    Endpoint principal : extrait la CNI (Qwen/Groq) et le plan (Gemini).
-    Attend un ou plusieurs fichiers pour 'cni' et un fichier pour 'plan'.
-    Protégé : nécessite un token de session valide (CSO connecté).
+    Endpoint principal : accepte les fichiers, crée une tâche et retourne un task_id.
+    Le traitement est effectué en arrière-plan par le ocr_worker.
     """
     if "cni" not in request.files or "plan" not in request.files:
         return jsonify({"erreur": "Les fichiers 'cni' et 'plan' sont requis"}), 400
@@ -948,82 +1058,65 @@ def extraire_tout():
     fichiers_cni = request.files.getlist("cni")
     fichiers_plan = request.files.getlist("plan")
 
-    temp_paths = []
+    # 1. Création de la tâche
+    task_id = str(uuid.uuid4())
+    user_id = g.user_id
+
+    # 2. Sauvegarde des fichiers dans uploads/
+    uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
     try:
-        # 1. Sauvegarde des images CNI (1 = recto seul/recto+verso réunis, 2 = recto+verso séparés)
-        cni_paths = []
-        for f in fichiers_cni:
+        # Sauvegarde CNI
+        for i, f in enumerate(fichiers_cni):
             suffix = os.path.splitext(f.filename)[1] or ".jpg"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                f.save(tmp.name)
-                cni_paths.append(tmp.name)
-                temp_paths.append(tmp.name)
-
-        # 2. Sauvegarde des images de la fiche client (1 = recto seul/recto+verso réunis, 2 = recto+verso séparés)
-        plan_paths = []
-        for f in fichiers_plan:
+            path = os.path.join(uploads_dir, f"{task_id}_cni_{i}{suffix}")
+            f.save(path)
+        # Sauvegarde Plan
+        for i, f in enumerate(fichiers_plan):
             suffix = os.path.splitext(f.filename)[1] or ".jpg"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                f.save(tmp.name)
-                plan_paths.append(tmp.name)
-                temp_paths.append(tmp.name)
-
-        # A. Extraction CNI (Qwen/Groq)
-        logger.info("Extraction CNI (%s image(s)) via Qwen/Groq... [CSO: %s]", len(cni_paths), g.user_nom)
-        cni_result = extract_cni(cni_paths)
-
-        # B. Extraction de la fiche client (Gemini)
-        logger.info("Extraction de la fiche client (%s image(s)) via Gemini...", len(plan_paths))
-        plan_data = plan_processor.extract_plan_data(plan_paths)
-
-        # Normalisation en majuscules et conversion du salaire
-        processed_plan_data = {}
-        for k, v in plan_data.items():
-            val = str(v).upper() if v else ""
-            processed_plan_data[k] = val
-
-        # Conversion salaire chiffres -> lettres
-        salaire_val = plan_data.get("salaire", "").strip()
-        if salaire_val and salaire_val.isdigit():
-            try:
-                processed_plan_data["salaireLettres"] = num2words.num2words(int(salaire_val), lang='fr').capitalize()
-            except Exception as e:
-                logger.error("Erreur conversion salaire en lettres : %s", e)
-                processed_plan_data["salaireLettres"] = ""
-        else:
-            processed_plan_data["salaireLettres"] = ""
-
-        final_data = {**_cni_keys_to_camel_case(cni_result["data"]), **processed_plan_data}
-
-        # Anti-False Positive Validation: Check for mandatory identity fields
-        mandatory_fields = ["nom", "prenom", "numeroCNI"]
-        is_valid = all(final_data.get(field) and str(final_data.get(field)).strip() for field in mandatory_fields)
-
-        if not is_valid:
-            return jsonify({"erreur": "L'image de la CNI est illisible ou incomplète. Veuillez fournir une image plus claire."}), 422
-
-        return jsonify({
-            "succes": True,
-            "champs": final_data,
-            "avertissements_cni": cni_result.get("warnings", []),
-        })
-
-    except CNIExtractionError as exc:
-        logger.error("Erreur extraction CNI : %s", exc)
-        return jsonify({"erreur": str(exc)}), 422
-
+            path = os.path.join(uploads_dir, f"{task_id}_plan_{i}{suffix}")
+            f.save(path)
     except Exception as e:
-        logger.error("Erreur pipeline : %s", e)
-        traceback.print_exc()
-        # We raise the exception to let the global @app.errorhandler handle it and mask it
-        raise e
+        logger.error("Erreur lors de la sauvegarde des fichiers : %s", e)
+        return jsonify({"erreur": "Erreur lors du téléchargement des fichiers."}), 500
 
+    # 3. Enregistrement de la tâche en DB
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO ocr_tasks (id, user_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (task_id, user_id, "pending", _now_iso(), _now_iso())
+        )
+        conn.commit()
     finally:
-        for path in temp_paths:
-            try:
-                os.remove(path)
-            except Exception:
-                pass
+        conn.close()
+
+    logger.info("Tâche d'extraction créée : %s [User: %s]", task_id, user_id)
+    return jsonify({"succes": True, "task_id": task_id})
+
+
+@app.route("/extraction-statut/<task_id>", methods=["GET"])
+@require_auth
+def extraction_statut(task_id):
+    """Vérifie le statut d'une tâche d'extraction et retourne le résultat si terminé."""
+    conn = get_db()
+    try:
+        task = conn.execute(
+            "SELECT status, result, error FROM ocr_tasks WHERE id = ? AND user_id = ?",
+            (task_id, g.user_id)
+        ).fetchone()
+
+        if not task:
+            return jsonify({"erreur": "Tâche non trouvée."}), 404
+
+        res = {"succes": True, "status": task["status"]}
+        if task["status"] == "completed":
+            res["champs"] = json.loads(task["result"])
+        elif task["status"] == "failed":
+            res["erreur"] = task["error"]
+
+        return jsonify(res)
+    finally:
+        conn.close()
 
 
 @app.route("/debug", methods=["POST"])
@@ -1056,8 +1149,14 @@ def debug_ocr():
 if __name__ == "__main__":
     logger.info("AccountOCR Professional API starting...")
 
+    # Lancer le worker OCR en arrière-plan
+    worker_thread = threading.Thread(target=ocr_worker, daemon=True)
+    worker_thread.start()
+    logger.info("Worker OCR lancé en arrière-plan.")
+
     # On récupère le port de Railway, sinon 5000
     port = int(os.environ.get("PORT", 5000))
+
 
     # Sur Railway, on désactive le mode debug pour éviter les conflits de proxy
     is_production = os.environ.get("RAILWAY_ENVIRONMENT") is not None

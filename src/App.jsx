@@ -911,32 +911,72 @@ function PageExtraction({ onRetour, onContinuer, dark, setDark, langue, setLangu
       const formData = new FormData();
       fichiersCNI.forEach(file => formData.append("cni", file));
       fichiersPlan.forEach(file => formData.append("plan", file));
-      setEtape("traitement"); setProgression(40);
+
       const response = await fetch(`${API_URL}/extraire-tout`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}` },
         body: formData,
       });
-      setProgression(85);
+
       if (response.status === 401) {
         deconnexion();
         throw new Error("Session expirée, merci de vous reconnecter.");
       }
       if (!response.ok) throw new Error(`Erreur serveur: ${response.status}`);
+
       const data = await response.json();
-      setProgression(100);
-      if (data.succes && data.champs) {
-        const fusion = { ...donnees, ...data.champs };
-        setDonnees(fusion);
-        sauvegarder(fusion, "extraction");
-        setTermine(true);
-      } else throw new Error(data.erreur || t.erreurExtraction);
+      if (!data.succes || !data.task_id) throw new Error(data.erreur || t.erreurExtraction);
+
+      const taskId = data.task_id;
+
+      // --- Démarrage du Polling ---
+      const pollInterval = setInterval(async () => {
+        try {
+          const statRes = await fetch(`${API_URL}/extraction-statut/${taskId}`, {
+            headers: { "Authorization": `Bearer ${token}` },
+          });
+          const statData = await statRes.json();
+
+          if (!statRes.ok || !statData.succes) {
+            throw new Error(statData.erreur || "Erreur lors du suivi de l'extraction");
+          }
+
+          const status = statData.status;
+
+          if (status === "pending") {
+            setEtape("attente"); setProgression(30);
+          } else if (status === "processing") {
+            setEtape("traitement"); setProgression(60);
+          } else if (status === "completed") {
+            setProgression(100);
+            const fusion = { ...donnees, ...statData.champs };
+            setDonnees(fusion);
+            sauvegarder(fusion, "extraction");
+            setTermine(true);
+            setEnCours(false);
+            setEtape("");
+            clearInterval(pollInterval);
+          } else if (status === "failed") {
+            throw new Error(statData.erreur || "L'extraction a échoué côté serveur.");
+          }
+        } catch (err) {
+          setErreur(err.message);
+          setEnCours(false);
+          setEtape("");
+          clearInterval(pollInterval);
+        }
+      }, 2000);
+
     } catch (e) {
       setErreur(e.message.includes("fetch") || e.message.includes("Failed") ? t.erreurServeur : e.message);
-    } finally { setEnCours(false); setEtape(""); }
+      setEnCours(false);
+      setEtape("");
+    }
   };
 
-  const msgEtape = etape === "envoi" ? "📤 Envoi des fichiers..." : "🔍 Analyse en cours...";
+
+  const msgEtape = etape === "envoi" ? "📤 Envoi des fichiers..." : etape === "attente" ? "⏳ En attente du serveur..." : "🔍 Analyse en cours...";
+
 
   const MAX_IMAGES_PAR_DOCUMENT = 2;
 
@@ -1837,8 +1877,8 @@ function PageAdminLogs({ onRetour, dark, setDark, langue, setLangue, t, serveurO
 // ============================================================
 // APP
 // ============================================================
-
-const [dark, setDark] = useState(false);
+export default function App() {
+  const [dark, setDark] = useState(false);
 const [langue, setLangue] = useState("fr");
 const [comptesJour, setComptesJour] = useState(getComptesJour());
 const [serveurOK, setServeurOK] = useState(false);
@@ -2014,3 +2054,4 @@ return (
     })()}
   </AuthContext.Provider>
 );
+}
